@@ -1,0 +1,26 @@
+{
+  "version": "1.1.0",
+  "lastUpdated": "2026-03-06",
+  "documents": [
+    {
+      "id": "informer-deep-dive",
+      "path": "docs/informer-deep-dive.md",
+      "title": "Informer の内部実装",
+      "description": "Reflector→DeltaFIFO→Indexer→SharedIndexInformer→sharedProcessor の処理フロー、各コンポーネントの役割と設計理由、ResourceVersion・Resync・HasSynced の概念、WorkQueue との連携パターン、SharedInformerFactory を使った実際のコントローラでの使用例",
+      "tags": ["Informer", "client-go", "Reflector", "DeltaFIFO", "Indexer", "SharedInformer", "WorkQueue", "コントローラパターン"],
+      "industry": ["IT"],
+      "topics": ["Informer", "Reflector", "DeltaFIFO", "Indexer", "SharedIndexInformer", "SharedInformerFactory", "ResourceEventHandler", "ResourceVersion", "Resync", "WorkQueue"],
+      "updatedAt": "2026-03-06"
+    },
+    {
+      "id": "architecture",
+      "path": "docs/architecture.md",
+      "title": "Kubernetes アーキテクチャ全体像",
+      "description": "Control Plane（kube-apiserver, kube-controller-manager, kube-scheduler, etcd）とData Plane（kubelet, kube-proxy）の役割、コンポーネント間通信フロー、Informer/WorkQueue/Reconciliation Loopの設計パターン、コードリーディングの起点となるファイル一覧",
+      "tags": ["アーキテクチャ", "Control Plane", "Data Plane", "設計パターン"],
+      "industry": ["IT"],
+      "topics": ["kube-apiserver", "kube-controller-manager", "kube-scheduler", "kubelet", "kube-proxy", "etcd", "Informer", "WorkQueue", "Reconciliation Loop", "client-go", "staging"],
+      "updatedAt": "2026-03-06"
+    }
+  ]
+}
