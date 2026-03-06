@@ -3,6 +3,16 @@
   "lastUpdated": "2026-03-06",
   "documents": [
     {
+      "id": "controller-pattern",
+      "path": "docs/controller-pattern.md",
+      "title": "コントローラパターン実装ガイド",
+      "description": "Deployment Controllerを例にReconciliation Loopの全実装を解説。構造体設計・Informerへのイベントハンドラ登録・WorkQueueによるエンキュー・worker goroutineの起動・syncDeploymentの処理分岐・エラーハンドリングとリトライ・OwnerReferenceによる親子関係管理・コントローラ実装の骨格テンプレート",
+      "tags": ["コントローラ", "Reconciliation Loop", "WorkQueue", "Deployment", "client-go"],
+      "industry": ["IT"],
+      "topics": ["DeploymentController", "syncDeployment", "WorkQueue", "worker", "OwnerReference", "ReplicaSet", "RateLimiter", "reconcile", "Lister", "HasSynced"],
+      "updatedAt": "2026-03-07"
+    },
+    {
       "id": "informer-deep-dive",
       "path": "docs/informer-deep-dive.md",
       "title": "Informer の内部実装",

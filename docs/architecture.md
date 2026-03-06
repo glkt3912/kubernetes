@@ -239,6 +239,8 @@ pkg/kubelet/kubelet.go
 
 ### Deployment コントローラを理解する（コントローラの典型例）
 
+詳細は **[docs/controller-pattern.md](controller-pattern.md)** を参照。
+
 ```
 pkg/controller/deployment/deployment_controller.go
   └── DeploymentController
