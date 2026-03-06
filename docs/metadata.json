@@ -3,6 +3,16 @@
   "lastUpdated": "2026-03-06",
   "documents": [
     {
+      "id": "scheduler",
+      "path": "docs/scheduler.md",
+      "title": "Scheduler の設計と実装",
+      "description": "Scheduling Framework の全拡張点（Filter/Score/Reserve/Bind等）の概念・プラグインインターフェース定義・組み込みプラグイン一覧・CycleState によるプラグイン間状態共有・Filter の並列評価と percentageOfNodesToScore・Score の weight 合算・Assume による楽観的更新・Preemption の仕組み",
+      "tags": ["Scheduler", "Scheduling Framework", "Filter", "Score", "Plugin", "Preemption"],
+      "industry": ["IT"],
+      "topics": ["kube-scheduler", "SchedulingFramework", "FilterPlugin", "ScorePlugin", "CycleState", "SchedulingQueue", "Preemption", "Assume", "BindPlugin", "PermitPlugin"],
+      "updatedAt": "2026-03-07"
+    },
+    {
       "id": "controller-pattern",
       "path": "docs/controller-pattern.md",
       "title": "コントローラパターン実装ガイド",

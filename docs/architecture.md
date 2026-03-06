@@ -145,12 +145,14 @@ Kubernetes の全コントローラに共通する設計パターン。
 ```
 
 **重要な設計原則**:
+
 - Informer はローカルキャッシュを持つため、reconcile 内では apiserver でなくキャッシュを読む
 - WorkQueue は重複排除と Rate Limiting を自動的に行う
 - reconcile は冪等（idempotent）に設計する（何度呼ばれても同じ結果になること）
 - エラー時は `queue.AddRateLimited(key)` でリトライ
 
 **実装場所**:
+
 - `staging/src/k8s.io/client-go/tools/cache/` - Reflector, DeltaFIFO, Indexer, Informer
 - `staging/src/k8s.io/client-go/util/workqueue/` - WorkQueue
 
@@ -209,6 +211,8 @@ staging/src/k8s.io/apiserver/pkg/server/genericapiserver.go
 ```
 
 ### Scheduler を理解する
+
+詳細は **[docs/scheduler.md](scheduler.md)** を参照。
 
 ```
 cmd/kube-scheduler/main.go

@@ -42,6 +42,116 @@ Kubernetes では Deployment、ReplicaSet、Job、StatefulSet など数十のコ
 
 ---
 
+## 補足: WorkQueue とは
+
+WorkQueue は **「処理すべきキーを一時的に蓄えるバッファ」** であり、Informer の EventHandler と reconcile の worker を非同期につなぐ役割を持つ。
+
+**バッファはプロセスのヒープメモリ上にある Go の構造体**であり、etcd やファイルへの永続化は行わない。
+プロセス（kube-controller-manager）が終了すると内容は消える。
+
+```
+workqueue（ヒープ上の構造体）
+  ├── queue      []string          // キー文字列のスライス（FIFO 順）
+  ├── dirty      set[string]       // 積まれている or 処理中のキー集合
+  ├── processing set[string]       // 現在 Get() 済みで処理中のキー集合
+  └── cond       *sync.Cond        // worker goroutine の待機/起床に使う条件変数
+```
+
+プロセス再起動後は WorkQueue が空になる。しかし以下の流れでキューは自然に再構築される。
+
+```
+① 再起動 → WorkQueue: []（空）
+
+② Informer 起動 → Reflector が List() を実行
+   apiserver から全 Deployment を一括取得
+   例: [my-app, other-app, test-app]
+
+③ DeltaFIFO 経由で handleDeltas() が各オブジェクトに OnAdd() を呼ぶ
+
+④ EventHandler の AddFunc が全オブジェクト分実行される
+   → queue.Add("default/my-app")
+   → queue.Add("default/other-app")
+   → queue.Add("default/test-app")
+
+⑤ WorkQueue が再構築される
+   WorkQueue: ["default/my-app", "default/other-app", "default/test-app"]
+
+⑥ worker が各 Deployment を reconcile → 必要なら修正
+```
+
+再起動前にキューに積まれていた内容は消えるが、
+Informer の初回 List が「今クラスタに存在する全オブジェクト」を AddFunc 経由でキューに流し込む。
+reconcile が冪等（何度呼んでも副作用が同じ）なので全件を再処理しても問題ない。
+これも reconcile を冪等に設計しなければならない理由のひとつ。
+
+単純なチャネルや slice ではなく、コントローラ向けに特化した3つの機能を持つ。
+
+### 機能 1: 重複排除（deduplication）
+
+同じキーが短時間に何度 `Add()` されても、キューの中には1件だけ残る。
+
+```
+Deployment が3秒間に5回更新された場合:
+
+  Add("default/my-app")  ← 1回目
+  Add("default/my-app")  ← 2回目（既にある → 追加しない）
+  Add("default/my-app")  ← 3〜5回目も同様
+
+  キューの中: ["default/my-app"]  ← 1件だけ
+```
+
+reconcile は「最新の状態に合わせる」処理なので、途中の更新を個別に処理する必要がない。
+最後の1回だけ処理すれば結果は同じになる（冪等性の活用）。
+
+### 機能 2: 処理中フラグ（in-flight tracking）
+
+`Get()` したキーは「処理中」としてマークされる。
+`Done()` を呼ぶまで、同じキーは他の worker から取り出せない。
+
+```
+worker A が "default/my-app" を Get() して処理中
+   ↓
+worker B も同じキーを Get() しようとする → ブロックされる（dequeued later）
+   ↓
+worker A が Done() を呼ぶ → worker B が取り出せるようになる
+```
+
+これにより **同一リソースの並行 reconcile が起きない** ことが保証される。
+
+### 機能 3: レート制限（rate limiting）
+
+`AddRateLimited(key)` で再エンキューすると、指数バックオフが適用される。
+
+```
+エラー回数 → 次の再試行までの待機時間（デフォルト）
+
+1回目:   5ms
+2回目:  10ms
+3回目:  20ms
+...
+10回目:  2.5s
+15回目: 約82s
+```
+
+連続して reconcile が失敗しても apiserver を叩き続けない設計になっている。
+成功したら `Forget(key)` でカウンタをリセットする。
+
+### WorkQueue のインターフェース全体像
+
+```
+TypedRateLimitingInterface[string] の主要メソッド:
+
+  Add(key)              → 即時エンキュー（重複排除あり）
+  AddRateLimited(key)   → レート制限付きエンキュー（エラーリトライ用）
+  AddAfter(key, d)      → d 秒後にエンキュー（定期チェック用）
+  Get() (key, quit)     → ブロッキング取得（処理中マーク）
+  Done(key)             → 処理完了通知（マーク解除）
+  Forget(key)           → リトライカウントリセット
+  ShutDown()            → キューを閉じる（Get が quit=true を返すようになる）
+```
+
+---
+
 ## 3. Deployment Controller を読む
 
 Deployment Controller は「Deployment が管理する ReplicaSet と Pod を常に spec 通りの状態に保つ」コントローラである。
@@ -76,6 +186,7 @@ type DeploymentController struct {
 ```
 
 **設計のポイント**:
+
 - `client` は **書き込み専用**（Create/Update/Delete）
 - `dLister` / `rsLister` / `podLister` は **読み取り専用**（Indexer のキャッシュ参照）
 - 読み書きを明確に分離することで、reconcile 内のアクセスパターンが明快になる
