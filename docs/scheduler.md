@@ -366,6 +366,64 @@ Filter を通過した Node が一定数集まれば十分な品質のスケジ�
 全 Node 評価はスケジューリングのレイテンシを増大させる。
 この設定は `percentageOfNodesToScore` フィールドで調整できる。
 
+### parallelize パッケージの仕組み
+
+```
+pkg/scheduler/framework/parallelize/parallelism.go
+```
+
+```go
+const DefaultParallelism int = 16  // デフォルトの goroutine 数
+
+type Parallelizer struct {
+    parallelism int  // 同時に動かす goroutine の上限
+}
+
+func (p Parallelizer) Until(ctx context.Context, pieces int,
+    doWorkPiece func(index int), operation string) {
+
+    chunkSize := chunkSizeFor(pieces, p.parallelism)
+    // chunkSize = max(1, min(√pieces, pieces/parallelism))
+    // 例: 5000 Node / 16 workers = 約 312 Node ずつ処理
+
+    workqueue.ParallelizeUntil(ctx, p.parallelism, pieces, doWorkPiece, ...)
+}
+```
+
+**動作イメージ**:
+
+```
+pieces = 500 Node, parallelism = 16
+
+Node[0..31]   → goroutine 1
+Node[32..63]  → goroutine 2
+Node[64..95]  → goroutine 3
+...
+Node[480..499]→ goroutine 16
+
+全 goroutine が並列に Filter プラグインを実行
+→ 終わったら結果をまとめる
+```
+
+`chunkSize` の計算に √Node 数が使われているのは、
+goroutine の起動コスト vs 並列効果のバランスを取るため。
+Node 数が少なければ chunk を大きくして goroutine 数を抑え、
+Node 数が多ければ細かく分割して並列度を上げる。
+
+Score フェーズも同じ `Parallelizer.Until()` で並列実行される。
+
+```go
+// framework/runtime/framework.go
+// 各 Node に対して Score プラグインを並列実行
+f.Parallelizer().Until(ctx, len(nodes), func(index int) {
+    nodeInfo := nodes[index]
+    for _, pl := range plugins {
+        score, status := pl.Score(ctx, state, pod, nodeInfo)
+        // ...
+    }
+}, metrics.Score)
+```
+
 ---
 
 ## 7. Score フェーズとスコアの合算
