@@ -63,6 +63,118 @@ type RoleRef struct {
 }
 ```
 
+### Subject とは
+
+**「誰に権限を与えるか」の対象**。RoleBinding の「誰が」の部分。
+
+```
+RoleBinding の構造:
+
+  誰が（Subject）  +  何の権限を（RoleRef）  +  どこで（Namespace）
+      ↓                     ↓
+  subjects:             roleRef:
+  - kind: User            name: pod-reader
+    name: alice
+```
+
+Subject の3種類：
+
+```
+User（ユーザー）:
+  kubectl を実行する人間のアカウント
+  例: "alice"、"bob@example.com"
+  → Kubernetes 自体はユーザーを管理しない
+    外部の認証（証明書・OIDC）に委ねる
+
+Group（グループ）:
+  複数ユーザーをまとめたもの
+  例: "developers"、"system:masters"（管理者グループ）
+  → 複数ユーザーに同じ権限を一括で与えるときに使う
+
+ServiceAccount（サービスアカウント）:
+  Pod（プログラム）のアカウント
+  例: my-controller が apiserver に接続するときの身元
+  → 人間ではなくアプリが apiserver を操作する際に使う
+  → Namespace スコープで Kubernetes が管理する
+```
+
+具体的なイメージ：
+
+```
+人間が操作する場合:
+  alice（User）→ RoleBinding → pod-reader（Role）
+  → alice は Pod の一覧を取得できる
+
+アプリが操作する場合:
+  my-controller（ServiceAccount）→ RoleBinding → deployment-manager（Role）
+  → my-controller Pod は Deployment を作成・更新できる
+```
+
+Kubernetes のコントローラ（Deployment Controller など）が apiserver を叩けるのは、
+ServiceAccount に Role を紐付けているから。
+
+#### Kubernetes ServiceAccount と GCP Service Account は別物
+
+名前が似ているが、管理主体も用途も異なる。
+
+```
+Kubernetes ServiceAccount:
+  Kubernetes が管理するアカウント（etcd に保存される Kubernetes リソース）
+  Pod → apiserver（Kubernetes の API）を叩くときの身元
+  例: Deployment Controller が Pod を作成する
+
+GCP Service Account:
+  GCP（Google Cloud）が管理するアカウント（GCP IAM で管理）
+  Pod → GCS・BigQuery など GCP のリソースにアクセスするときの身元
+  例: アプリが GCS バケットからファイルを取得する
+```
+
+| | Kubernetes ServiceAccount | GCP Service Account |
+|---|---|---|
+| 管理者 | Kubernetes（etcd）| GCP（IAM）|
+| アクセス先 | Kubernetes API | GCP リソース |
+| 対応するもの | - | AWS IAM Role / Azure Managed Identity |
+
+**Workload Identity で連携もできる**:
+
+```
+Kubernetes ServiceAccount
+        ↓ Workload Identity で紐付け
+GCP Service Account
+        ↓
+GCP リソース（GCS・BigQuery など）にアクセス
+
+→ Pod に GCP の認証情報（JSON キー）を直接渡さなくて済む
+  「この Kubernetes ServiceAccount を持つ Pod」=「この GCP SA の権限を持つ」
+  と設定するだけでよい
+```
+
+Workload Identity は**対応づけるだけの仕組み**。実際のトークン発行・注入は GKE が裏でやる。
+
+```bash
+# GCP 側: Kubernetes SA に GCP SA を使う権限を付与
+gcloud iam service-accounts add-iam-policy-binding \
+  my-gcp-sa@project.iam.gserviceaccount.com \
+  --member="serviceAccount:project.svc.id.goog[namespace/k8s-sa]"
+
+# Kubernetes 側: SA にアノテーションを付ける
+kubectl annotate serviceaccount k8s-sa \
+  iam.gke.io/gcp-service-account=my-gcp-sa@project.iam.gserviceaccount.com
+```
+
+```
+Pod 起動時に GKE が自動でやること:
+  この Pod の ServiceAccount を確認
+       ↓
+  アノテーションを見て GCP SA を特定
+       ↓
+  GCP の一時トークンを Pod に自動注入
+       ↓
+  Pod は JSON キーなしで GCS などにアクセスできる
+```
+
+---
+
 ### PolicyRule の特殊値
 
 | フィールド | `"*"` の意味 |
