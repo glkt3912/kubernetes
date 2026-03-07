@@ -3,6 +3,16 @@
   "lastUpdated": "2026-03-06",
   "documents": [
     {
+      "id": "glossary",
+      "path": "docs/glossary.md",
+      "title": "用語集",
+      "description": "TypeMeta/ObjectMeta/ResourceVersion/Generation/UID/Labels/Annotations/OwnerReference/Finalizers/DeletionTimestamp などの基本型、Namespace/Node/Pod/Deployment/ReplicaSet のリソース階層、Reconciliation Loop/Lister/HasSynced/Service/PV/PVC の概念、略称一覧",
+      "tags": ["用語集", "TypeMeta", "ObjectMeta", "ResourceVersion", "基本型"],
+      "industry": ["IT"],
+      "topics": ["TypeMeta", "ObjectMeta", "ResourceVersion", "Generation", "UID", "Labels", "Annotations", "OwnerReference", "Finalizers", "DeletionTimestamp", "Namespace", "Node", "Pod", "Deployment", "ReplicaSet", "Lister", "HasSynced", "Service", "PV", "PVC", "CRI", "RBAC"],
+      "updatedAt": "2026-03-07"
+    },
+    {
       "id": "kubelet",
       "path": "docs/kubelet.md",
       "title": "kubelet の Pod 管理ループ",

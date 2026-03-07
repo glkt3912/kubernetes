@@ -285,6 +285,20 @@ pkg/controller/deployment/sync.go
 
 ---
 
+### 用語を調べる
+
+詳細は **[docs/glossary.md](glossary.md)** を参照。
+
+```
+TypeMeta / ObjectMeta / ResourceVersion / Generation / UID
+Labels / Annotations / OwnerReference / Finalizers / DeletionTimestamp
+Namespace / Node / Pod / Deployment / ReplicaSet
+Lister / HasSynced / Service / PV / PVC
+略称一覧（k8s / CRI / CNI / RBAC / CRD / PLEG 等）
+```
+
+---
+
 ## 6. 今後の学習ワークフロー
 
 `kubernetes/` ディレクトリで `claude` を起動すると `.mcp.json` が読み込まれ、以下の MCP ツールが利用可能になる。
