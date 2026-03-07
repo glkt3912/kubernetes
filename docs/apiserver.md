@@ -208,6 +208,66 @@ RBAC 以外にも Node 認可・ABAC・Webhook 認可なども選択できる。
                               → 許可/拒否/オブジェクト変換を返す
 ```
 
+### Admission Webhook の詳細
+
+Webhook サーバーの実体はただの **HTTPS サーバー**。Go / Python など何で書いてもよい。
+
+```
+apiserver ──HTTPS──> 自前の Webhook サーバー
+                          |
+                     AdmissionReview を受け取り
+                     allowed: true/false を JSON で返す
+```
+
+**Mutating Webhook**（変換）:
+- オブジェクトを書き換えて返せる（JSON Patch 形式）
+- 例: sidecar コンテナの自動注入（Istio）・デフォルト値の注入
+
+**Validating Webhook**（検証）:
+- `allowed: true/false` を返すだけ。書き換えは不可
+- 例: 社内レジストリ以外のイメージを拒否・ポリシー違反チェック（OPA/Gatekeeper）
+
+**呼び出し順序**:
+
+```
+Mutating Webhook（全て呼ばれる、並列も可）
+        |
+        v  ← オブジェクトが変わった状態で
+Validating Webhook（全て呼ばれる、並列も可）
+        |
+        v  1つでも denied → リクエスト拒否
+etcd に保存
+```
+
+Mutating が先に全て実行され、オブジェクトが確定してから Validating が実行される。
+この順序は「変換後の最終形をバリデーションする」ために重要。
+
+**Webhook のレスポンス例**:
+
+```json
+{
+  "apiVersion": "admission.k8s.io/v1",
+  "kind": "AdmissionReview",
+  "response": {
+    "uid": "...",
+    "allowed": false,
+    "status": {
+      "message": "社内レジストリ以外のイメージは使用できません"
+    }
+  }
+}
+```
+
+**CEL バリデーション（CRD）との使い分け**:
+
+| | Admission Webhook | CEL バリデーション |
+|---|---|---|
+| 対象 | 全リソース（ビルトイン含む）| CRD のみ |
+| 外部サーバー | 必要 | 不要 |
+| 表現力 | 無制限 | 中程度 |
+| 外部 DB 参照 | 可能 | 不可 |
+| 複数リソースをまたぐ検証 | 可能 | 不可 |
+
 ---
 
 ## 7. etcd への永続化
