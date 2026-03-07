@@ -237,12 +237,61 @@ func (c *WidgetController) reconcile(key string) error {
 | **Pruning** | スキーマに定義されていないフィールドを自動削除 |
 | **Printer Columns** | `kubectl get` での表示カラムのカスタマイズ |
 
-### CEL バリデーションの例
+### CEL（Common Expression Language）バリデーション
+
+Google が作った式評価の軽量言語。OpenAPI スキーマだけでは書けなかった
+**フィールド間の関係** や **更新時の制約** を CRD 定義の中に直接書ける。
+
+#### OpenAPI スキーマとの違い
+
+```
+OpenAPI スキーマ: 型チェック・最大値・最小値など単一フィールドの制約のみ
+CEL:             フィールド間の関係・更新前後の比較など複雑な制約も書ける
+```
+
+#### self と oldSelf
+
+- `self` — バリデーション中のオブジェクト（現在の値）
+- `oldSelf` — 更新前のオブジェクト（UPDATE 時のみ使用可）
+
+#### よくある使用例
 
 ```yaml
 x-kubernetes-validations:
+  # 単純な上限チェック
   - rule: "self.spec.replicas <= 10"
-    message: "replicas must be 10 or less"
+    message: "replicas は 10 以下にしてください"
+
+  # フィールド間の関係チェック（OpenAPI では書けない）
+  - rule: "self.spec.minReplicas <= self.spec.maxReplicas"
+    message: "minReplicas は maxReplicas 以下にしてください"
+
+  # 文字列条件
+  - rule: "self.spec.name.startsWith('prod-')"
+    message: "名前は prod- で始まる必要があります"
+
+  # イミュータブル（更新禁止）チェック
+  - rule: "self.spec.storageClass == oldSelf.spec.storageClass"
+    message: "storageClass は変更できません"
+```
+
+#### Admission Webhook との比較
+
+| | CEL バリデーション | Admission Webhook |
+|---|---|---|
+| 外部サーバー | 不要 | 必要 |
+| ネットワーク遅延 | なし | ある |
+| 設定の複雑さ | CRD に書くだけ | Webhook サーバーを別途運用 |
+| 表現力 | 中程度 | 無制限（Go で何でも書ける）|
+
+シンプルなバリデーションは CEL、複雑なロジックは Webhook が適している。
+
+#### 実装場所
+
+```
+staging/src/k8s.io/apiextensions-apiserver/pkg/apiserver/schema/cel/
+  └── validation.go  - CEL 式のコンパイル・実行
+  └── compilation.go - CEL プログラムのビルド
 ```
 
 ---
