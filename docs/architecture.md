@@ -250,17 +250,23 @@ pkg/scheduler/scheduler.go
 
 ### kubelet を理解する
 
-```
-cmd/kubelet/kubelet.go
-  └── app.Run()
+詳細は **[docs/kubelet.md](kubelet.md)** を参照。
 
-pkg/kubelet/kubelet.go
-  └── Kubelet.Run()
-      └── syncLoop() ← メインループ
-          └── syncLoopIteration()
-              └── HandlePodAdditions / HandlePodUpdates
-                  └── dispatchWork() → podWorkers.UpdatePod()
-                      └── syncPod() ← 実際の Pod 同期処理
+```
+pkg/kubelet/kubelet.go:1828
+  └── Run() - 各サブシステム起動・syncLoop 呼び出し
+
+pkg/kubelet/kubelet.go:1944
+  └── syncLoop() - メインイベントループ（PLEG/Watch/定期リシンクを select で待ち受け）
+
+pkg/kubelet/kubelet.go:1996
+  └── SyncPod() - 1 Pod の同期処理（コンテナ起動・ボリュームマウント等）
+
+pkg/kubelet/kuberuntime/kuberuntime_manager.go
+  └── CRI 経由のコンテナ操作
+
+pkg/kubelet/prober/
+  └── liveness/readiness/startup probe の実装
 ```
 
 ### Deployment コントローラを理解する（コントローラの典型例）

@@ -3,6 +3,16 @@
   "lastUpdated": "2026-03-06",
   "documents": [
     {
+      "id": "kubelet",
+      "path": "docs/kubelet.md",
+      "title": "kubelet の Pod 管理ループ",
+      "description": "kubeletの主な責務・syncLoop/PLEG/podWorkersの構造・SyncPodの処理ステップ・CRI（containerd/CRI-O）との接続・liveness/readiness/startup probeの仕組み・Node ステータス報告・GC・StaticPod・CrashLoopBackOffの概念",
+      "tags": ["kubelet", "Pod", "CRI", "Probe", "Node", "PLEG", "syncLoop"],
+      "industry": ["IT"],
+      "topics": ["kubelet", "syncLoop", "PLEG", "podWorkers", "SyncPod", "CRI", "containerd", "liveness", "readiness", "startup", "Probe", "NodeStatus", "NodeLease", "StaticPod", "GarbageCollection"],
+      "updatedAt": "2026-03-07"
+    },
+    {
       "id": "apiserver",
       "path": "docs/apiserver.md",
       "title": "APIServer のリクエストパイプライン",
