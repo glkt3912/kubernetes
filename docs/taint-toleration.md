@@ -1,209 +1,187 @@
 # Taint / Toleration の仕組み
 
-## 1. 設計思想
+## 1. 一言で言うと
 
-Taint / Toleration は **「ノードが Pod を拒否する」** という方向の制御を実現する仕組み。
-
-NodeSelector や NodeAffinity が「Pod がノードを選ぶ」（引き付け）であるのに対し、
-Taint は「ノードが望ましくない Pod を弾く」（反発）の概念。
+**Taint** = ノードに付ける「お断りタグ」
+**Toleration** = Pod が持つ「このタグは無視していいよ」という許可証
 
 ```
-NodeAffinity / NodeSelector : Pod → Node  （Pod がノードを指定）
-Taint / Toleration          : Node → Pod  （Node が Pod を制限）
-```
+Node A（GPU 専用）
+Taint: gpu=true:NoSchedule
+  ↓ 「GPU 専用。許可なき Pod はお断り」
 
-用途の典型例:
-- GPU ノードに GPU を必要としない Pod を乗せたくない
-- マスターノードにユーザー Pod を乗せたくない
-- メンテナンス中のノードに新規 Pod を乗せたくない
+普通の Pod → Toleration なし → 配置できない
+GPU Pod   → Toleration あり → 配置できる
+```
 
 ---
 
-## 2. 型定義
+## 2. Taint の付け方
 
-```
-staging/src/k8s.io/api/core/v1/types.go
-```
-
-```go
-type Taint struct {
-    Key    string      // Taint のキー（必須）
-    Value  string      // 値（省略可）
-    Effect TaintEffect // NoSchedule / PreferNoSchedule / NoExecute
-    TimeAdded *metav1.Time // NoExecute の場合、いつ付加されたか
-}
-
-type Toleration struct {
-    Key      string             // 空 = 全キーにマッチ
-    Operator TolerationOperator // Exists / Equal / Lt / Gt
-    Value    string             // Operator が Equal の場合に使用
-    Effect   TaintEffect        // 空 = 全 Effect にマッチ
-    TolerationSeconds *int64    // NoExecute のみ: 何秒後に退去させるか
-}
+```bash
+kubectl taint nodes node1 gpu=true:NoSchedule
 ```
 
-### Effect の意味
+形式は `キー=値:Effect`。
 
-| Effect | スケジューラ | kubelet（実行中 Pod）|
+```
+gpu   =   true   :   NoSchedule
+↑         ↑          ↑
+キー       値          Effect（拒否したときどうするか）
+```
+
+---
+
+## 3. Effect の 3 種類
+
+|  | 新規 Pod | 既存 Pod |
 |---|---|---|
-| `NoSchedule` | 対応 Toleration なし → 配置拒否 | 影響なし（既存 Pod は残る）|
-| `PreferNoSchedule` | できれば避ける（Soft 制約）| 影響なし |
-| `NoExecute` | 配置拒否 | Toleration なし → 退去（Evict）|
+| `NoSchedule` | 拒否 | そのまま |
+| `PreferNoSchedule` | できれば拒否 | そのまま |
+| `NoExecute` | 拒否 | 追い出す |
 
-### マッチングルール
+### NoSchedule
 
-Toleration が Taint にマッチする条件:
+新しく来る Pod を置かない。今いる Pod はそのまま動き続ける。
+
+### PreferNoSchedule
+
+できれば置かない。他のノードに空きがなければしかたなく置く（ソフト制約）。
+
+### NoExecute
+
+新規 Pod を置かない、かつ今いる Pod も削除する。
+ノードが壊れたときなどに Kubernetes が自動で付ける。
+
+---
+
+## 4. Toleration（許可証）
+
+Pod の spec に書く。Taint を無視するための設定。
+
+```yaml
+spec:
+  tolerations:
+  - key: "gpu"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"
+```
+
+### Taint との対応
 
 ```
-(Toleration.Key == Taint.Key または Toleration.Key == "")
-AND
-(
-  Operator == Exists  → Value は見ない（ワイルドカード）
-  Operator == Equal   → Toleration.Value == Taint.Value
-)
-AND
-(Toleration.Effect == Taint.Effect または Toleration.Effect == "")
+Node の Taint          Pod の Toleration
+gpu = true : NoSchedule
+↑     ↑       ↑
+key   value   effect    ← この3つが一致したら「マッチ」→ 配置できる
+```
+
+### Operator の 2 種類
+
+```yaml
+# Equal: 値まで一致する必要がある
+- key: "gpu"
+  operator: "Equal"
+  value: "true"   # gpu=true にだけマッチ
+
+# Exists: キーがあればOK（値は問わない）
+- key: "gpu"
+  operator: "Exists"  # gpu=anything にマッチ
+```
+
+### 全ての Taint を許容
+
+```yaml
+- operator: "Exists"  # key も effect も空 = 全部許容
+```
+
+kube-proxy などシステム Pod がこれを使っている。
+
+---
+
+## 5. 全体の流れ
+
+```
+① kubectl taint nodes node1 gpu=true:NoSchedule
+        |
+        v  Node.Spec.Taints に追加 → etcd に保存
+
+② kubectl apply -f pod.yaml
+        |
+        v  Scheduler が配置先を探す
+
+③ Filter フェーズ（TaintToleration プラグイン）
+  node1 を候補にしようとする
+        |
+        v  node1 の Taint を確認
+  Pod の Toleration でカバーできない Taint が 1 つでもある？
+    YES → node1 はアウト（Unschedulable）
+    NO  → node1 は通過
+
+④ Score フェーズ
+  PreferNoSchedule の Taint を Tolerate できない数が多いノードほど
+  スコアが低くなる → 避けられる
 ```
 
 ---
 
-## 3. Scheduler との連携
+## 6. NoExecute と TolerationSeconds（猶予時間）
 
-Taint / Toleration の Filter と Score は
-`pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go`
-に実装されている。
-
-### 実装される Framework インターフェース
-
-```go
-var _ fwk.FilterPlugin    = &TaintToleration{}  // 配置不可ノードを除外
-var _ fwk.PreScorePlugin  = &TaintToleration{}  // Score 前の前処理
-var _ fwk.ScorePlugin     = &TaintToleration{}  // ソフト制約でスコア計算
-var _ fwk.EnqueueExtensions = &TaintToleration{} // 再スケジュール判定
-```
-
-### Filter フェーズ
-
-```go
-func (pl *TaintToleration) Filter(ctx context.Context,
-    state fwk.CycleState, pod *v1.Pod, nodeInfo fwk.NodeInfo) *fwk.Status {
-
-    taint, isUntolerated := v1helper.FindMatchingUntoleratedTaint(
-        logger,
-        node.Spec.Taints,        // ノードの Taint 一覧
-        pod.Spec.Tolerations,     // Pod の Toleration 一覧
-        helper.DoNotScheduleTaintsFilterFunc(), // NoSchedule/NoExecute のみ対象
-        pl.enableTaintTolerationComparisonOperators,
-    )
-    if !isUntolerated {
-        return nil  // 全 Taint を Tolerate できる → 合格
-    }
-    return fwk.NewStatus(fwk.UnschedulableAndUnresolvable, "...")
-}
-```
-
-`DoNotScheduleTaintsFilterFunc()` は `PreferNoSchedule` を除外する。
-NoSchedule と NoExecute の Taint だけを Filter の判定対象にしているのがポイント。
-
-### Score フェーズ（ソフト制約）
-
-```go
-// PreScore: PreferNoSchedule 系の Toleration だけ事前に抽出して CycleState へ保存
-func (pl *TaintToleration) PreScore(...) *fwk.Status {
-    tolerationsPreferNoSchedule := getAllTolerationPreferNoSchedule(pod.Spec.Tolerations)
-    cycleState.Write(preScoreStateKey, &preScoreState{...})
-    return nil
-}
-
-// Score: 耐えられない PreferNoSchedule Taint の数をスコアとして返す
-func (pl *TaintToleration) Score(...) (int64, *fwk.Status) {
-    score := int64(countIntolerableTaintsPreferNoSchedule(...))
-    return score, nil  // スコアが高い = 嫌われている → NormalizeScore で逆転
-}
-```
-
-NormalizeScore で `true`（reverse）を渡しているため、
-Taint が多いノードほど最終スコアが低くなり、配置が避けられる。
-
----
-
-## 4. 処理フロー全体図
+NoExecute Taint が付いたノードから既存 Pod を退去させるのは
+**NodeLifecycle Controller**（Scheduler ではない）。
 
 ```
-kubectl taint nodes node1 key=val:NoSchedule
+Node が突然 NotReady になった
         |
-        v
-  Node.Spec.Taints に追加 → apiserver → etcd
+        v  NodeLifecycle Controller が自動で付与
+  node1: NoExecute Taint が付く
         |
-        v  Watch イベント（UpdateNodeTaint）
-  Scheduler の Informer が検知
-        |
-        v
-  SchedulingQueue: 影響を受ける未スケジュール Pod を再キュー
-  (isSchedulableAfterNodeChange で判定)
-        |
-        v  新しいスケジューリングサイクル
-  Filter: TaintToleration.Filter()
-    - NoSchedule/NoExecute Taint を Tolerate できるか？
-    - できない → Unschedulable
-        |
-        v  (Filter を通過した場合)
-  Score: TaintToleration.Score()
-    - PreferNoSchedule Taint を何個 Tolerate できないか数える
-    - スコアが低いノードを優先（反転）
+        v  Pod ごとに判定
+  Toleration なし           → 即座に削除
+  tolerationSeconds: 300    → 300秒（5分）待ってから削除
+  Toleration あり（秒なし） → ずっと残る
+```
+
+### TolerationSeconds を使う理由
+
+ネットワークの一時的な揺れで NotReady になることがある。
+すぐ Pod を消すと不要な再起動が起きる。
+数分待てば自然に復帰することも多い。
+
+```yaml
+tolerations:
+- key: "node.kubernetes.io/not-ready"
+  operator: "Exists"
+  effect: "NoExecute"
+  tolerationSeconds: 300  # 5分待ってから退去
 ```
 
 ---
 
-## 5. NoExecute と TolerationSeconds
+## 7. Kubernetes が自動で付与する Taint
 
-`NoExecute` の Taint が付いたノードの既存 Pod への影響は
-**kubelet ではなく NodeLifecycle Controller** が管理する。
-
-```
-Node に NoExecute Taint 追加
-        |
-        v
-  NodeLifecycle Controller が検知
-        |
-        v
-  各 Pod の Tolerations を確認
-    - Toleration なし → 即退去（Pod を Delete）
-    - TolerationSeconds あり → 指定秒後に退去
-    - TolerationSeconds なし（Toleration あり）→ 退去しない
-```
-
-`TolerationSeconds` の典型的な用途は
-「ノードが一時的に不調な場合は N 秒待ってから退去する」という猶予設定。
-
----
-
-## 6. 組み込み Taint 一覧
-
-Kubernetes がシステムで自動付与する代表的な Taint:
-
-| Taint | 付与タイミング | 意味 |
+| Taint | いつ付く | Effect |
 |---|---|---|
-| `node.kubernetes.io/not-ready` | Node が NotReady | 準備できていない |
-| `node.kubernetes.io/unreachable` | Node との疎通不可 | 到達不能 |
-| `node.kubernetes.io/unschedulable` | `kubectl cordon` 後 | スケジュール停止 |
-| `node.kubernetes.io/memory-pressure` | メモリ不足 | リソース逼迫 |
-| `node.kubernetes.io/disk-pressure` | ディスク不足 | リソース逼迫 |
-| `node-role.kubernetes.io/control-plane` | Control Plane ノード | マスター専用 |
+| `node.kubernetes.io/not-ready` | Node が NotReady | NoExecute |
+| `node.kubernetes.io/unreachable` | Node と疎通できない | NoExecute |
+| `node.kubernetes.io/unschedulable` | `kubectl cordon` 後 | NoSchedule |
+| `node.kubernetes.io/memory-pressure` | メモリ不足 | NoSchedule |
+| `node-role.kubernetes.io/control-plane` | Control Plane ノード | NoSchedule |
 
 ---
 
-## 7. コードリーディングの起点
+## 8. コードリーディングの起点
 
 ```
 staging/src/k8s.io/api/core/v1/types.go:4040
   └── Taint / Toleration の型定義
 
 pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
-  └── Filter / PreScore / Score の実装
+  └── Filter（配置拒否）・Score（ソフト制約）の実装
 
 staging/src/k8s.io/component-helpers/scheduling/corev1/helpers.go
-  └── FindMatchingUntoleratedTaint() - Taint/Toleration のマッチングロジック
+  └── FindMatchingUntoleratedTaint() - マッチング判定のロジック
 
 pkg/controller/nodelifecycle/node_lifecycle_controller.go
   └── NoExecute Taint による Pod 退去の制御
