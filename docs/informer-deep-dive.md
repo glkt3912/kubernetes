@@ -127,6 +127,46 @@ Reflector は **「APIサーバーのデータを DeltaFIFO に流し込む」**
 
 ### 3-2. DeltaFIFO: 差分を蓄積するキュー
 
+**DeltaFIFO とは何か**:
+DeltaFIFO は Reflector と Indexer の間に位置する**中継バッファ**で、
+「Delta（変更の種類 + 変更後のオブジェクト）」を「FIFO（先入れ先出し）の順序」で蓄積するキューである。
+
+```
+Reflector ──(Add/Update/Delete)──► DeltaFIFO ──(Pop)──► handleDeltas → Indexer
+```
+
+名前の由来:
+- **Delta** = 変更差分（Added / Updated / Deleted など）
+- **FIFO**  = First In, First Out（先入れ先出し）
+
+通常の FIFO キューは「オブジェクトそのもの」を積むが、
+DeltaFIFO は **「キーごとに変更の履歴リスト（Deltas）」を積む**点が特徴。
+
+---
+
+**FIFO とは何か**:
+FIFO は First In, First Out（先入れ先出し）の略で、**先に入れたものが先に取り出される**データ構造。
+
+```
+入れる順:   [A] → [B] → [C]
+取り出し順:  A  →  B  →  C   （入れた順と同じ）
+```
+
+**なぜ FIFO を採用するのか**:
+変更を**発生順に処理する**ことで一貫性を保つため。
+
+```
+FIFO の場合（正しい）:
+  Pod が「作成 → 更新 → 削除」の順に発生
+  → 作成を処理 → 更新を処理 → 削除を処理
+  → 最終状態: Pod は存在しない ✓
+
+LIFO（後入れ先出し）だったら（問題あり）:
+  同じイベント列を逆順に処理
+  → 削除を処理 → 更新を処理 → 作成を処理
+  → 最終状態: Pod が存在してしまう ✗
+```
+
 DeltaFIFO は通常の FIFO と異なり、**同一オブジェクトへの複数変更を「差分リスト（Deltas）」として蓄積**する。
 
 ```
@@ -137,10 +177,34 @@ key: "default/my-pod"
       ]
 ```
 
-**なぜ普通の FIFO ではないのか**:
-処理が遅れている間に同じ Pod が Add → Update → Delete された場合、
-Deltas としてまとめて持つことで「処理した時点での最終状態」を把握できる。
-単純なキューだと、古い Add イベントを処理する前に Delete が来ても気づけない。
+**なぜ普通の FIFO ではなく Deltas にするのか**:
+
+普通の FIFO に個別イベントを積むと、処理が遅れている間に問題が起きる。
+
+```
+普通の FIFO の場合（問題あり）:
+  キュー: [Added(Pod), Updated(Pod), Deleted(Pod)]
+           ↑
+           worker が Added を取り出して処理中
+           → Updated, Deleted はまだキューに残っている
+           → 同一 Pod に対して複数 worker が並行処理する危険がある
+           → 「Add された後に Delete された」という文脈が失われる
+```
+
+Deltas にすることで3つの嬉しさがある。
+
+```
+DeltaFIFO の場合（正しい）:
+  キュー: ["default/my-pod"]               ← キーは1つ（重複排除）
+  items:  {"default/my-pod": [Added, Updated, Deleted]}  ← 履歴は保持
+
+  Pop() すると Deltas ごとまとめて取り出される
+  → 1つの worker が Added → Updated → Deleted を順番に処理
+```
+
+1. **順序保証** — 同一オブジェクトの変更は必ず1つの worker が順番に処理する
+2. **文脈の保持** — 「Add された後に Delete された」という経緯を見て処理を最適化できる（Add の処理をスキップして Delete だけ行うなど）
+3. **重複排除との両立** — キーは1つに絞りつつ、変更履歴は落とさない
 
 **DeltaType の種類**:
 

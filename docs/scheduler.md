@@ -54,6 +54,35 @@ Bind 待ちの間も次の Pod のスケジューリングを進められる。
 
 通常の FIFO ではなく、**優先度付きキュー（Heap）** になっている。
 
+**優先度付きキュー（Heap）とは**:
+各要素に「優先度」を持たせ、**常に優先度が最も高い要素から取り出される**データ構造。
+FIFO（先入れ先出し）と異なり、後から入れた要素でも優先度が高ければ先に取り出される。
+
+```
+FIFO（DeltaFIFO 等）:   入れた順に取り出す
+  入: [A, B, C] → 出: A → B → C
+
+優先度付きキュー（Heap）: 優先度順に取り出す
+  入: [Pod(priority=10), Pod(priority=50), Pod(priority=1)]
+  出: priority=50 → priority=10 → priority=1
+```
+
+Heap という名前は、内部実装に**ヒープ木**（親ノードが子より必ず優先度が高い二分木）を使うことに由来する。
+要素の追加・取り出しがどちらも O(log n) で行えるため、大量の Pod でも高速に動作する。
+
+SchedulingQueue では Pod の `spec.priority`（PriorityClass から設定される整数値）が優先度として使われる。
+
+**FIFO と優先度付きキューの使い分け**:
+Kubernetes では用途に応じて2種類のキューが使い分けられている。
+
+| | DeltaFIFO | SchedulingQueue |
+|---|---|---|
+| 何を並べるか | オブジェクトの変更イベント | スケジューリング待ち Pod |
+| 順序の基準 | 発生した時刻（先着順） | Pod の優先度（重要度順） |
+| 順序を崩すと | 状態が壊れる（作成より先に削除が処理されるなど） | 重要な Pod が後回しになる |
+
+「**イベントの正確な順序が重要な場面は FIFO**」「**重要度に応じた処理順が必要な場面は Heap**」という設計判断。
+
 ```
 SchedulingQueue の内部構造:
 
@@ -117,6 +146,7 @@ type CycleState interface {
 ```
 
 **用途の例**:
+
 - `PreFilter` プラグインが Pod の要件を事前計算して CycleState に保存
 - `Filter` プラグインが各 Node の評価時に CycleState から計算済みデータを取り出す
 - 毎サイクル新しい CycleState が作られ、サイクル終了後に破棄される
@@ -125,8 +155,72 @@ type CycleState interface {
 
 ## 4. Scheduling Framework のプラグイン拡張点
 
+**Scheduling Framework とは何か**:
+Kubernetes 1.15 で導入された、スケジューリング処理を**プラグインとして差し替え可能にする仕組み**。
+
+導入前は「スケジューリングのロジックを変えたい」場合にスケジューラ本体のコードを直接修正する必要があり、
+upstream の更新についていくのが困難だった。
+
+```
+導入前（モノリシック）:
+  スケジューラ本体にすべてのロジックが埋め込まれている
+  → カスタマイズ = フォークして本体を改変
+
+導入後（Scheduling Framework）:
+  スケジューリングの各ステップが「拡張点」として定義されている
+  → カスタマイズ = 拡張点に対応したプラグインを実装して登録するだけ
+  → スケジューラ本体には手を触れない
+```
+
+**プラグインの仕組み**:
+各拡張点は Go のインターフェースとして定義されており、
+プラグインはそのインターフェースを実装した構造体として作る。
+1つのプラグインが複数の拡張点を実装することもできる。
+
+```
+例: NodeResourcesFit プラグイン
+  → PreFilterPlugin と FilterPlugin の両方を実装
+  → PreFilter で Pod のリソース要求を計算しておき
+    Filter で各 Node のリソース空き容量と比較する
+```
+
 各拡張点（Extension Point）は Go のインターフェースとして定義されており、
 プラグインはこの中から必要なものだけ実装する。
+
+**拡張点ごとに独自のインターフェースがある**:
+拡張点の数だけインターフェースが存在し、プラグインは必要なものだけ実装する。
+
+```go
+// 拡張点ごとに別々のインターフェース
+type FilterPlugin interface {
+    Filter(ctx, state, pod, nodeInfo) *Status
+}
+type ScorePlugin interface {
+    Score(ctx, state, pod, nodeInfo) (int64, *Status)
+}
+type BindPlugin interface {
+    Bind(ctx, state, pod, nodeName) *Status
+}
+// ... 拡張点の数だけインターフェースがある
+```
+
+プラグインはこの中から必要なものだけ実装すればよい。
+
+```
+NodeResourcesFit プラグイン:
+  ✓ PreFilterPlugin を実装  （リソース要求の事前計算）
+  ✓ FilterPlugin を実装     （Node のリソース空き確認）
+  ✗ ScorePlugin は実装しない
+  ✗ BindPlugin は実装しない
+
+ImageLocality プラグイン:
+  ✗ FilterPlugin は実装しない
+  ✓ ScorePlugin を実装      （イメージキャッシュによる加点）
+```
+
+Framework は起動時に「このプラグインはどの拡張点を実装しているか」を
+**型アサーション**で確認し、対応する拡張点にだけ登録する。
+これが Go のインターフェースをプラグインシステムとして使う典型パターン。
 
 ### 拡張点一覧
 
@@ -192,6 +286,38 @@ type ScoreExtensions interface {
 
 `pkg/scheduler/framework/plugins/` に全組み込みプラグインが実装されている。
 
+### 補足: アフィニティとは
+
+**アフィニティ（Affinity）** とは「親和性・引き付け」という意味で、
+**「この Pod をどこに置きたいか（または置きたくないか）の希望条件」** を表す設定。
+
+```
+nodeAffinity（Node アフィニティ）
+  → 特定ラベルを持つ Node にだけ配置したい
+  例: SSD を搭載した Node にだけ配置したい
+      disk-type=ssd ラベルを持つ Node を要求
+
+podAffinity（Pod アフィニティ）
+  → 特定の Pod と同じ Node に配置したい
+  例: キャッシュ Pod と同じ Node にアプリ Pod を置く（通信を高速化）
+
+podAntiAffinity（Pod アンチアフィニティ）
+  → 特定の Pod とは別の Node に配置したい
+  例: 同じアプリの Pod を別々の Node に分散させる（冗長性確保）
+```
+
+**required と preferred の違い**:
+
+```
+required（必須）: 条件を満たす Node がなければスケジュールしない → Filter で評価
+preferred（希望）: 満たせれば嬉しいが、なければ他の Node でもよい → Score で加点
+```
+
+`NodeAffinity` プラグインと `InterPodAffinity` プラグインが Filter・Score の両方に登録されており、
+`required` 条件は Filter フェーズで、`preferred` 条件は Score フェーズで評価される。
+
+---
+
 ### Filter 系プラグイン（主要なもの）
 
 | プラグイン | ディレクトリ | 判定内容 |
@@ -246,36 +372,119 @@ Filter を通過した Node が一定数集まれば十分な品質のスケジ�
 
 Filter 通過後、残 Node に対して Score プラグインが並列で実行される。
 
+### スコアが表しているもの
+
+Score の値（0〜100）は **「この Node がこの Pod にとってどれだけ適切か」の度合い**を表す。
+値が大きいほど「この Node に置くと良い」という意味で、最終的に最高スコアの Node が選ばれる。
+
+各プラグインが独自の観点でスコアを計算する：
+
+```
+NodeResourcesLeastAllocated（リソース分散）
+  → Node の空きリソースが多いほど高スコア
+  → リソース使用率が低い Node を優先することで、クラスタ全体に Pod を分散させる
+  → 空き 80% → Score=80、空き 40% → Score=40
+
+ImageLocality（イメージキャッシュ）
+  → Pod が使うコンテナイメージがすでにその Node にキャッシュされていれば高スコア
+  → イメージのダウンロード不要 → 起動が速くなる
+  → キャッシュあり → Score=100、なし → Score=0
+
+NodeAffinity（preferred 条件）
+  → Pod の preferred nodeAffinity 条件に一致するラベルを持つ Node に加点
+  → 「できれば SSD Node に置きたい」という希望が満たされる度合い
+```
+
+**weight（重み）の意味**:
+プラグインごとに weight を設定することで、「どの観点を重視するか」を調整できる。
+`NodeAffinity (weight: 2)` は `ImageLocality (weight: 1)` より2倍影響が大きい。
+
 ```
 Node A のスコア計算例:
 
   NodeResourcesLeastAllocated (weight: 1): Score = 80
+    → CPU・メモリの空きが多い Node（空き 80%）
+
   ImageLocality               (weight: 1): Score = 40
+    → Pod のイメージが一部だけキャッシュされている
+
   NodeAffinity                (weight: 2): Score = 60
+    → preferred 条件に部分的に一致
 
   最終スコア = (80×1 + 40×1 + 60×2) / (1+1+2) = 240/4 = 60
 ```
 
-最高スコアの Node が `SuggestedHost` として選ばれる。
+この計算を全 Node に対して行い、最終スコアが最も高い Node が選ばれる。
 同スコアの場合はランダム選択。
 
 ---
 
 ## 8. Reserve と Assume：楽観的更新
 
-Bind は非同期で実行されるため、Bind 完了前に次の Pod のスケジューリングが始まる。
-このとき「まだ Bind されていないが、Node A に配置予定」という情報をスケジューラ内部キャッシュに保持する仕組みが **Assume（楽観的更新）** だ。
+### Bind とは
+
+**Bind** は「Pod をどの Node に配置するか」という決定を **apiserver に書き込む処理**。
 
 ```
-Pod X を Node A に配置決定
-  │
-  ├── sched.Cache.AssumedPod(pod, nodeName)  ← キャッシュ上で「配置済み」とみなす
-  │     → 次の Pod のスケジューリングでは Node A のリソースが減った状態で評価される
-  │
-  └── Binding Cycle（非同期）
-        Bind 成功 → キャッシュが実態に合った状態になる
-        Bind 失敗 → sched.Cache.ForgetPod()  ← 楽観的更新を取り消す
+Bind が行うこと:
+
+  Pod.spec.nodeName = "node-a" を apiserver に書き込む（PATCH リクエスト）
+        │
+        └── etcd に永続化される
+              │
+              └── node-a 上の kubelet が Watch で検知 → コンテナを起動
 ```
+
+```
+Bind 前: Pod.spec.nodeName = ""（未割り当て） → Pending 状態
+Bind 後: Pod.spec.nodeName = "node-a"         → kubelet が起動処理を開始
+```
+
+Bind は apiserver へのネットワーク越しのリクエストなので時間がかかる。
+そのため Binding Cycle を非同期 goroutine に分離し、スケジューラはすぐ次の Pod の処理に移る。
+
+---
+
+### 楽観的更新（Assume）とは
+
+**楽観的更新**とは「完了を確認する前に、成功したと仮定して先に進む」設計パターン。
+
+Bind は非同期なので、Bind 完了を待たずに次の Pod のスケジューリングが始まる。
+楽観的更新なしだと二重カウントが発生する：
+
+```
+（楽観的更新なし）
+
+  Pod X → Node A に配置決定（Bind 開始、まだ完了していない）
+  Pod Y → スケジューリング開始
+           Node A を評価 → "まだ空いている" とみなしてしまう
+           Pod Y も Node A に配置決定 → リソースが二重にカウントされる（バグ）
+```
+
+**Assume（楽観的更新）で解決する**：
+
+```
+  Pod X → Node A に配置決定
+           ↓ Bind 開始（非同期）と同時に
+           sched.Cache.AssumedPod(X, "node-a")
+           → キャッシュ上で "Node A に Pod X がいる" と先に反映
+
+  Pod Y → スケジューリング開始
+           Node A を評価 → "Pod X 分のリソースは使用済み" として正しく評価
+           → 二重カウントが起きない
+```
+
+**失敗した場合**：
+
+```
+  Bind 成功 → キャッシュが実態に合った状態になる（そのまま）
+  Bind 失敗 → sched.Cache.ForgetPod()  ← 楽観的更新を取り消す
+               → Pod X は再度 Pending に戻り、再スケジュールされる
+```
+
+「楽観的」とは「どうせ成功するだろう」と仮定して先に進む、という意味。
+Web フロントエンドでもよく使われるパターンで、いいねボタンを押した時に
+API レスポンスを待たずに即座に UI のカウントを増やし、失敗したら元に戻す、というのが同じ発想。
 
 Bind に失敗してもスケジューラは正しく動き続ける（Pod は再度 Pending になり再スケジュール）。
 
