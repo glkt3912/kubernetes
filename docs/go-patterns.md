@@ -644,7 +644,70 @@ type TypedInterface[T comparable] interface {
 
 ---
 
-## 12. wait パッケージ：ループとリトライ
+## 12. parallelize パッケージ：goroutine プールによる並列処理
+
+### なぜ go キーワードだけでは不十分か
+
+`go` キーワードは goroutine を**起動する**だけで、**制御する**仕組みは別途必要になる。
+
+```go
+// go だけで並列処理すると goroutine が無制限に増える
+nodes := getFeasibleNodes()  // 5000 Node
+for _, node := range nodes {
+    go scoreNode(node)  // 5000 goroutine が一気に起動
+    // → メモリを大量消費・CPU が競合・制御不能
+}
+```
+
+`parallelize.Until` を使うと goroutine 数を上限付きで制御できる：
+
+```go
+// 最大 16 goroutine に制限して 5000 Node を並列処理
+// pkg/scheduler/framework/parallelize/parallelism.go:66
+p.Until(ctx, len(nodes), func(i int) {
+    scoreNode(nodes[i])
+}, "scoring")
+```
+
+```
+5000 Node を処理するとき:
+
+  go だけ:
+    goroutine × 5000 → 制御できない
+
+  parallelize:
+    goroutine × 16（上限）→ 5000 Node を chunk に分けて順次処理
+    → リソース消費が予測可能
+```
+
+**parallelize が提供する追加機能**:
+
+```
+1. goroutine 数の上限（parallelism: 16）
+   → リソース消費を制御できる
+
+2. chunk 分割（chunkSizeFor）
+   → N個のアイテムを M goroutine で効率よく分散させる計算
+
+3. メトリクス記録
+   → 何 goroutine が動いているかを Prometheus で可視化できる
+```
+
+**まとめ**:
+
+```
+go キーワード  → 「1つの goroutine を起動する」プリミティブ（言語機能）
+parallelize   → 「N個のアイテムをM個の goroutine で効率よく処理する」高レベルの道具
+
+go は材料、parallelize はその材料を使って作った道具、という関係。
+```
+
+Kubernetes の Filter・Score フェーズで全 Node を並列評価するために使われている。
+詳細は **[docs/scheduler.md](scheduler.md)** セクション6を参照。
+
+---
+
+## 13. wait パッケージ：ループとリトライ
 
 ### wait.UntilWithContext
 

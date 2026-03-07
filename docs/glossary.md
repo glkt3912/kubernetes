@@ -149,14 +149,148 @@ Finalizers が空でない間 → DeletionTimestamp は設定されるが etcd �
 
 グレースフル削除が要求されたオブジェクトに設定される時刻。
 
+**グレースフル削除とは**:
+「コンテナに後処理の時間を与えてから削除する」仕組み。
+即座に強制終了（SIGKILL）するのではなく、先に SIGTERM を送り一定時間待つ。
+
 ```
 kubectl delete pod my-pod
-  → apiserver が DeletionTimestamp を設定
-  → kubelet が SIGTERM を送る（グレースピリオド内に終了しなければ SIGKILL）
-  → コンテナが終了 → Finalizers を処理 → etcd から削除
+  │
+  ├── apiserver が DeletionTimestamp を設定（猶予期間の終了時刻）
+  │
+  ├── kubelet が SIGTERM をコンテナに送る
+  │     → アプリが「終了するよ」シグナルを受け取り後処理ができる
+  │       （接続を閉じる・処理中リクエストを完了させる等）
+  │
+  ├── 猶予期間（デフォルト 30 秒）待つ
+  │
+  ├── 猶予期間内に終了しなかった場合 → SIGKILL（強制終了）
+  │
+  └── コンテナ終了 → Finalizers 処理 → etcd から削除
 ```
 
+**なぜ必要か**:
+
+```
+即座に強制終了すると:
+  → 処理中だった HTTP リクエストが途中で切断される
+  → クライアントがエラーを受け取る
+
+グレースフル削除なら:
+  → SIGTERM を受けて新規リクエストの受付を止める
+  → 処理中のリクエストが完了してから自分で終了する
+  → クライアントへの影響がない
+```
+
+猶予期間は `spec.terminationGracePeriodSeconds`（デフォルト 30 秒）で変更できる。
+`kubectl delete pod my-pod --grace-period=0 --force` で即座に強制削除も可能。
+
 `DeletionTimestamp != nil` をコントローラが確認することで「削除中オブジェクト」を識別できる。
+
+---
+
+---
+
+## etcd
+
+**Kubernetes の「唯一の真実の源（Source of Truth）」となる分散キーバリューストア。**
+
+Kubernetes の全状態（Pod・Deployment・Service 等の全オブジェクト）はここに永続化される。
+apiserver だけが直接アクセスし、他のコンポーネントは apiserver 経由でのみ読み書きする。
+
+```
+全コンポーネント
+    │
+    │ REST API
+    v
+  apiserver  ← 唯一の入口
+    │
+    │ gRPC（etcd クライアント）
+    v
+  etcd クラスタ（通常 3 または 5 台で冗長構成）
+```
+
+**キーバリューストアとは**:
+
+```
+Key（パス形式）                         Value（JSON/Protobuf）
+/registry/pods/default/my-pod       →  { "apiVersion": "v1", "kind": "Pod", ... }
+/registry/deployments/default/web   →  { "apiVersion": "apps/v1", ... }
+```
+
+ファイルシステムのようなパス形式でキーを管理し、値は Go の構造体をシリアライズしたもの。
+
+**etcd の主な特徴**:
+
+```
+分散合意（Raft）:
+  複数台のうち過半数が合意したときだけ書き込みが成功する
+  → 1台クラッシュしても残りで継続できる（3台構成なら1台故障まで耐えられる）
+
+Watch:
+  特定キーの変更を購読できる
+  → apiserver がこれを使ってコンポーネントに変更を通知する（Informer の基盤）
+
+MVCC（多版同時実行制御）:
+  全変更に Revision 番号が付き、過去の状態も参照できる
+  → ResourceVersion の実体はこの Revision 番号
+```
+
+**なぜ apiserver 経由に限定するのか**:
+
+```
+直接アクセスを許可すると:
+  → 認証・認可・バリデーションをバイパスできてしまう
+  → 不正なデータが書き込まれてクラスタが壊れる可能性がある
+
+apiserver 経由に限定することで:
+  → 全書き込みが Authentication → Authorization → Admission を通過する
+  → データの一貫性と安全性を保証できる
+```
+
+詳細は **[docs/apiserver.md](apiserver.md)** を参照。
+
+---
+
+## gRPC
+
+**「関数を呼ぶように別プロセスと通信できる」仕組み。** Google が開発した RPC（Remote Procedure Call）フレームワーク。
+
+通常の REST（HTTP + JSON）と対比すると分かりやすい：
+
+```
+REST（HTTP + JSON）:
+  送信: POST /containers/create  Body: {"name": "my-container", "image": "nginx"}
+  受信: {"id": "abc123", "status": "created"}
+  → テキスト形式。人間が読める。
+
+gRPC（Protocol Buffers）:
+  送信: CreateContainer(name="my-container", image="nginx")  ← 関数呼び出しに見える
+  受信: ContainerResponse(id="abc123", status="created")
+  → バイナリ形式。人間には読めないが速い。
+```
+
+| | REST（HTTP + JSON） | gRPC |
+|---|---|---|
+| データ形式 | テキスト（JSON） | バイナリ（Protobuf） |
+| 速度 | 普通 | 速い（データが小さい） |
+| 読みやすさ | 人間が読める | 読めない |
+| 主な用途 | 外部 API・ブラウザ向け | 内部コンポーネント間 |
+
+**Kubernetes での使われ方**:
+
+```
+kubelet ──gRPC──► containerd / CRI-O（コンテナの起動・停止）  ← CRI
+apiserver ──gRPC──► etcd（データの読み書き）
+```
+
+内部コンポーネント間の通信は速度重視なので gRPC を使う。
+外部向け（kubectl など）は人間が扱いやすい REST を使う。
+
+**「RPC」とは**:
+Remote Procedure Call（遠隔手続き呼び出し）の略。
+ネットワーク越しの通信を「別サーバーの関数を呼ぶ」ように書ける設計思想。
+通信先がローカルか別サーバーかを意識しなくてよい。
 
 ---
 
