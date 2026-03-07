@@ -355,6 +355,19 @@ plugin/pkg/auth/authorizer/rbac/rbac.go
 
 ---
 
+### ストレージを理解する
+
+詳細は **[docs/storage.md](storage.md)** を参照。
+
+```
+PV: 実際のストレージ（管理者が用意）
+PVC: ストレージの要求（ユーザーが作成）
+StorageClass: PVC から PV を自動作成する動的プロビジョニング
+
+pkg/controller/volume/persistentvolume/pv_controller.go
+  └── PV と PVC のバインディングロジック
+```
+
 ### ネットワークを理解する
 
 詳細は **[docs/network.md](network.md)** を参照。
