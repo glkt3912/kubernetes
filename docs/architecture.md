@@ -448,6 +448,56 @@ pkg/controller/garbagecollector/graph.go
   └── 依存グラフのノード定義
 ```
 
+### StatefulSet を理解する
+
+詳細は **[docs/statefulset.md](statefulset.md)** を参照。
+
+```
+StatefulSet: 安定したアイデンティティを持つ Pod（DB, Kafka, Elasticsearch）
+  Pod 名: web-0, web-1, web-2（序数固定）
+  ネットワーク: Headless Service で安定した DNS（web-0.svc.ns.svc.cluster.local）
+  ストレージ: VolumeClaimTemplates で各 Pod が専用 PVC を保持
+
+pkg/controller/statefulset/stateful_set_control.go
+  └── updateStatefulSet() → processReplica() / processCondemned()
+```
+
+### DaemonSet を理解する
+
+詳細は **[docs/daemonset.md](daemonset.md)** を参照。
+
+```
+DaemonSet: 全ノードに 1 Pod を保証（ログ収集, 監視, ネットワークプラグイン）
+  Node 追加時: addNode() → nodeUpdateQueue → 自動で Pod 作成
+  配置判定: podsShouldBeOnNode() → NodeSelector / Taints / Tolerations を評価
+
+pkg/controller/daemon/daemon_controller.go
+  └── syncDaemonSet() → manage() → syncNodes()
+pkg/controller/daemon/update.go
+  └── rollingUpdate()（maxUnavailable による更新制御）
+```
+
+### Job / CronJob を理解する
+
+詳細は **[docs/job-cronjob.md](job-cronjob.md)** を参照。
+
+```
+Job: バッチ処理の完了保証（completions / parallelism / backoffLimit）
+  失敗時: 指数バックオフ（10s → 20s → ... → 10min）で再試行
+  Indexed Job: 各 Pod に連番インデックスを渡す
+
+CronJob: スケジュールに従って Job を生成
+  concurrencyPolicy: Allow / Forbid / Replace
+  startingDeadlineSeconds: スケジュール遅延の許容時間
+
+pkg/controller/job/job_controller.go
+  └── Job Controller / syncJob()
+pkg/controller/job/backoff_utils.go
+  └── 指数バックオフの実装
+pkg/controller/cronjob/cronjob_controllerv2.go
+  └── CronJob Controller / syncCronJob()
+```
+
 ---
 
 ## 6. 今後の学習ワークフロー

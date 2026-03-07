@@ -189,5 +189,38 @@
       "topics": ["GarbageCollector", "GraphBuilder", "OwnerReference", "Finalizers", "DeletionTimestamp", "ForegroundDeletion", "OrphanDeletion", "BackgroundDeletion", "isDangling", "virtualNode", "MetadataInformer"],
       "updatedAt": "2026-03-08"
     }
+  ,
+    {
+      "id": "statefulset",
+      "path": "docs/statefulset.md",
+      "title": "StatefulSet",
+      "description": "StatefulSetが必要な理由（Deploymentとの違い）・Pod名の固定（ordinal）・Headless Serviceによる安定したDNS名・VolumeClaimTemplates（各PodがPVCを持つ）・OrderedReady/Parallelポリシー・OnDelete/RollingUpdate戦略・Partitionによるカナリアリリース・updateStatefulSet/processReplicaフロー・ControllerRevisionによる履歴管理",
+      "tags": ["StatefulSet", "ワークロード", "コントローラ", "PVC", "Headless Service"],
+      "industry": ["IT"],
+      "topics": ["StatefulSet", "ordinal", "HeadlessService", "VolumeClaimTemplates", "PodManagementPolicy", "OrderedReady", "Parallel", "RollingUpdate", "OnDelete", "Partition", "ControllerRevision", "updateStatefulSet"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "daemonset",
+      "path": "docs/daemonset.md",
+      "title": "DaemonSet",
+      "description": "DaemonSetの存在意義（全ノードに1Pod=ノードエージェント）・Node追加時の自動配置（addNode/nodeUpdateQueue）・スケジューラとの協調（NodeAffinityによる配置）・配置判定（podsShouldBeOnNode）・syncDaemonSetフロー・RollingUpdate（maxUnavailable）・OnDelete・BurstReplicasによるレート制限・NodeSelector/Tolerationsとの連携",
+      "tags": ["DaemonSet", "ワークロード", "コントローラ", "ノードエージェント", "RollingUpdate"],
+      "industry": ["IT"],
+      "topics": ["DaemonSet", "DaemonSetsController", "syncDaemonSet", "podsShouldBeOnNode", "manage", "syncNodes", "RollingUpdate", "OnDelete", "NodeAffinity", "BurstReplicas", "nodeUpdateQueue"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "job-cronjob",
+      "path": "docs/job-cronjob.md",
+      "title": "Job / CronJob",
+      "description": "Jobの目的（バッチ処理の完了保証）・completions/parallelism/backoffLimitの型定義・Pod失敗時の指数バックオフ（10s→20s→...→10min）・Indexed Job（各Podに連番インデックス）・backoffLimitPerIndex・PodFailurePolicy・CronJobのスケジュール管理・concurrencyPolicy（Allow/Forbid/Replace）・startingDeadlineSeconds・syncCronJobフロー",
+      "tags": ["Job", "CronJob", "バッチ処理", "コントローラ", "スケジューリング"],
+      "industry": ["IT"],
+      "topics": ["Job", "CronJob", "completions", "parallelism", "backoffLimit", "IndexedJob", "backoffLimitPerIndex", "PodFailurePolicy", "concurrencyPolicy", "startingDeadlineSeconds", "syncCronJob", "exponentialBackoff"],
+      "updatedAt": "2026-03-08"
+    }
   ]
 }
