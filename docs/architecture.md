@@ -197,6 +197,21 @@ staging/src/k8s.io/client-go/tools/cache/reflector.go
 
 **読む順序**: `reflector.go` → `delta_fifo.go` → `store.go` → `shared_informer.go`
 
+### Go パターンを理解する
+
+詳細は **[docs/go-patterns.md](go-patterns.md)** を参照。
+
+```
+goroutine   → go func() による並行処理
+channel     → goroutine 間のデータ受け渡し
+select      → 複数 channel の待ち受け
+interface   → Duck Typing・プラグインシステム・型アサーション
+context     → キャンセル・タイムアウトの伝播
+WaitGroup   → goroutine の完了待ち
+Mutex       → 共有データの保護
+defer       → 確実な後処理（Mutex 解放・シャットダウン）
+```
+
 ### APIServer を理解する
 
 ```

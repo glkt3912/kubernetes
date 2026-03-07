@@ -3,6 +3,16 @@
   "lastUpdated": "2026-03-06",
   "documents": [
     {
+      "id": "go-patterns",
+      "path": "docs/go-patterns.md",
+      "title": "Kubernetes コードの Go パターン集",
+      "description": "Kubernetesコードを読む際に頻出するGoパターンの解説。goroutine・channel・select・interface・context・sync.WaitGroup・sync.Mutex・defer・エラーハンドリング・関数型フィールド・ジェネリクス・waitパッケージの使われ方を実コード例付きで説明",
+      "tags": ["Go", "goroutine", "channel", "interface", "context", "並行処理"],
+      "industry": ["IT"],
+      "topics": ["goroutine", "channel", "select", "interface", "context", "WaitGroup", "Mutex", "RWMutex", "defer", "error", "generics", "wait", "DependencyInjection", "TypeAssertion"],
+      "updatedAt": "2026-03-07"
+    },
+    {
       "id": "scheduler",
       "path": "docs/scheduler.md",
       "title": "Scheduler の設計と実装",
