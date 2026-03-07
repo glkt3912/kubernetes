@@ -7,10 +7,45 @@ Kubernetes のコードを読むときに頻出する Go のパターンをま�
 
 ## 1. goroutine：軽量な並行処理
 
+### 並行処理とは
+
+**並行処理（Concurrent Processing）** とは、複数の処理を「同時に進める」こと。
+
+```
+直列（Sequential）:
+  [タスクA] → [タスクB] → [タスクC]
+  A が終わるまで B は始まらない
+
+並行（Concurrent）:
+  [タスクA] ──────────────────►
+  [タスクB] ──────────────────►  ← 同時に進む
+  [タスクC] ──────────────────►
+```
+
+**「並行」と「並列」の違い**:
+
+```
+並行（Concurrent）: 複数タスクを切り替えながら進める（1コアでも可能）
+並列（Parallel）:   複数タスクを物理的に同時に実行する（複数コアが必要）
+
+goroutine は「並行」で動く。複数コアがあれば自動的に「並列」にもなる。
+Go ランタイムが goroutine を自動的にコアに振り分けてくれるため、
+プログラマは "並列かどうか" を意識せず go を書くだけでよい。
+```
+
 ### goroutine とは
 
 `go` キーワードを先頭に付けて関数を呼ぶと、その関数が **別スレッドのような存在（goroutine）** として並行実行される。
-OS スレッドより遥かに軽量（初期スタック数 KB）で、Kubernetes では数百〜数千の goroutine が同時に動いている。
+
+goroutine は OS スレッドと似ているが、はるかに軽量：
+
+| | OS スレッド | goroutine |
+|---|---|---|
+| メモリ（初期） | 約 1MB | 約 2KB |
+| 切り替えコスト | OS カーネルが管理（重い） | Go ランタイムが管理（軽い） |
+| 同時に動かせる数 | 数百〜数千が限界 | 数万〜数十万でも動く |
+
+Kubernetes では数百〜数千の goroutine が同時に動いているが、goroutine が軽量なため成立している。
 
 ```go
 // 同期（順番に実行）
@@ -48,15 +83,51 @@ for i := 0; i < workers; i++ {
 ### goroutine のライフサイクル
 
 goroutine は **関数が return するまで生き続ける**。
-`wait.UntilWithContext` のようなループ関数は `ctx` がキャンセルされるまで return しないため、
-goroutine もその間ずっと動き続ける。
+`return` 文でも関数末尾への到達でも、どちらでも goroutine は終了する。
+
+```go
+go func() {
+    fmt.Println("done")
+    // 末尾まで到達 → return がなくても goroutine 終了
+}()
+
+go func() {
+    return  // 明示的な return でも goroutine 終了
+}()
+```
+
+Kubernetes の goroutine が長生きするのは、関数の中に**ループ**が入っているから。
 
 ```
 goroutine の終わり方:
-  1. 関数が return する
-  2. ctx がキャンセルされ、ループが終わる
+  1. 関数が return する（単純な return・末尾到達、どちらでも同じ）
+  2. ctx がキャンセルされ、ループを抜けて return する
   3. panic（利用可能な回復処理がなければプロセスごとクラッシュ）
 ```
+
+**ループの場合分け**:
+
+Kubernetes には目的が異なる複数の無限ループがある。
+
+```
+Reflector の無限ループ:
+  理由: Watch 接続はタイムアウト・ネットワーク断で切れることがある
+  動作: 「Watch → 切れたら再 List & Watch」を繰り返す
+  → Watch 接続を維持し続けるためのループ
+
+worker goroutine の無限ループ:
+  理由: WorkQueue にアイテムが来るたびに処理し続ける必要がある
+  動作: 「キューから取り出す → reconcile → また取り出す」を繰り返す
+  → Watch とは無関係。キューを処理し続けるためのループ
+
+Scheduler のメインループ:
+  理由: Pending Pod が来るたびにスケジューリングし続ける必要がある
+  動作: 「キューから Pod を取り出す → スケジュール → また取り出す」を繰り返す
+  → worker と同じ発想。キューを処理し続けるためのループ
+```
+
+どれも「プロセスが動いている間、ずっと仕事をし続ける」という目的は共通だが、
+Watch 自体が理由なのは **Reflector だけ**。
 
 ---
 
@@ -228,8 +299,33 @@ type TypedInterface[T comparable] interface {
 
 ### context とは
 
-`context.Context` は **「この処理をいつキャンセルするか」という情報を持ち回す**ための型。
-関数の第1引数として渡すのが Go の慣習。
+`context.Context` は Go 標準ライブラリ（`import "context"`）として提供される**汎用的な概念**で、
+Kubernetes 固有ではなく Go で書かれたあらゆるプログラムで使われる。
+
+**「この処理をいつキャンセルするか」という情報を持ち回す**ための型で、
+関数の第1引数として渡すのが Go の慣習。変数名は慣習的に `ctx` と略す。
+
+```go
+// context.Context 型が持つ主なメソッド
+type Context interface {
+    Done() <-chan struct{}          // キャンセル時に閉じられる channel
+    Err() error                    // キャンセル理由（nil = まだ生きている）
+    Deadline() (time.Time, bool)   // タイムアウト期限
+    Value(key any) any             // 付随情報の取り出し
+}
+```
+
+**なぜ標準ライブラリに組み込まれているか**:
+サーバーサイドの処理では「途中でやめる」必要が頻繁に起きる。
+
+```
+HTTP リクエストの例:
+  クライアントがリクエストを送る
+    → サーバーが DB クエリ・外部 API 呼び出しを開始
+    → クライアントが接続を切断（ブラウザを閉じるなど）
+    → サーバーはもう処理を続けても意味がない
+    → context がキャンセルされ、全処理が止まる
+```
 
 ```go
 ctx, cancel := context.WithCancel(context.Background())
@@ -278,7 +374,22 @@ main の ctx キャンセル
 
 ### WaitGroup とは
 
-複数の goroutine が**全て完了するのを待つ**ための同期プリミティブ。
+`sync.WaitGroup` は Go **標準ライブラリ**（`import "sync"`）が提供する汎用的な型で、
+Kubernetes 固有ではなく Go の並行処理全般で使われる。
+
+`sync` パッケージが提供する主な型：
+
+| 型 | 用途 |
+|---|---|
+| `sync.WaitGroup` | goroutine の完了待ち |
+| `sync.Mutex` | 排他ロック（1つだけ通す） |
+| `sync.RWMutex` | 読み取り複数可・書き込み排他 |
+| `sync.Once` | 初期化処理を1回だけ実行する |
+| `sync.Map` | goroutine セーフな Map |
+
+`CycleState` の内部実装が `sync.Map` なのも、この標準ライブラリを使っているだけ。
+
+`WaitGroup` は**複数の goroutine が全て完了するのを待つ**ための同期プリミティブ。
 
 ```go
 var wg sync.WaitGroup
