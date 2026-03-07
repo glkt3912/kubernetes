@@ -134,5 +134,16 @@
       "topics": ["Service", "ClusterIP", "NodePort", "LoadBalancer", "EndpointSlice", "kube-proxy", "iptables", "CNI", "NetworkPolicy", "CoreDNS", "Pod Network"],
       "updatedAt": "2026-03-07"
     }
+  ,
+    {
+      "id": "storage",
+      "path": "docs/storage.md",
+      "title": "ストレージ（PV / PVC）",
+      "description": "PV/PVCが必要な理由（Pod のデータ永続化）・管理者/ユーザーの役割分担・AccessMode・PVフェーズ・バインディングの双方向ポインタ・ReclaimPolicy（Retain/Delete）・StorageClassによる動的プロビジョニング・VolumeBindingMode・CSI・Pod からの使い方・ライフサイクル全体図",
+      "tags": ["ストレージ", "PV", "PVC", "StorageClass", "CSI", "動的プロビジョニング"],
+      "industry": ["IT"],
+      "topics": ["PersistentVolume", "PersistentVolumeClaim", "StorageClass", "CSI", "ReclaimPolicy", "AccessMode", "VolumeBindingMode", "DynamicProvisioning", "PVController", "AttachDetach"],
+      "updatedAt": "2026-03-07"
+    }
   ]
 }
