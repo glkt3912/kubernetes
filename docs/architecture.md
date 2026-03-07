@@ -401,6 +401,53 @@ pkg/controller/podautoscaler/replica_calculator.go
   └── GetResourceReplicas() - レプリカ数の計算式
 ```
 
+### Deployment / ReplicaSet を理解する
+
+詳細は **[docs/deployment-replicaset.md](deployment-replicaset.md)** を参照。
+
+```
+Deployment（宣言）→ ReplicaSet（Pod 維持）→ Pod
+
+pkg/controller/deployment/deployment_controller.go
+  └── DeploymentController: ReplicaSet の replicas を管理
+pkg/controller/deployment/rolling.go
+  └── rolloutRolling(): MaxUnavailable/MaxSurge を守ったローリングアップデート
+pkg/controller/replicaset/replica_set.go
+  └── ReplicaSetController: Pod を作成・削除して replicas を維持
+```
+
+### ConfigMap / Secret を理解する
+
+詳細は **[docs/configmap-secret.md](configmap-secret.md)** を参照。
+
+```
+ConfigMap: アプリ設定（DB_HOST, TIMEOUT ...）
+Secret: 機密情報（DB_PASS, TLS_CERT ...）
+注入方法: 環境変数 / Volume マウント / envFrom
+暗号化: EncryptionConfiguration で etcd 内を暗号化可能
+
+staging/src/k8s.io/api/core/v1/types.go
+  └── ConfigMap / Secret の型定義
+pkg/kubelet/configmap/ / pkg/kubelet/secret/
+  └── kubelet による Volume マウント処理
+```
+
+### GC と OwnerReference を理解する
+
+詳細は **[docs/garbage-collection.md](garbage-collection.md)** を参照。
+
+```
+OwnerReference: 親子関係を UID で記録
+GarbageCollector: オーナー消滅時に依存オブジェクトを自動削除
+削除パターン: Background / Foreground / Orphan
+Finalizers: DeletionTimestamp セット後も物理削除を遅らせる仕組み
+
+pkg/controller/garbagecollector/garbagecollector.go
+  └── GarbageCollector / attemptToDeleteItem()
+pkg/controller/garbagecollector/graph.go
+  └── 依存グラフのノード定義
+```
+
 ---
 
 ## 6. 今後の学習ワークフロー

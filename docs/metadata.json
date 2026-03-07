@@ -156,5 +156,38 @@
       "topics": ["HorizontalPodAutoscaler", "HorizontalController", "ReplicaCalculator", "MetricsServer", "scaleUpLimit", "downscaleStabilisation", "ResourceMetric", "ExternalMetric", "VPA"],
       "updatedAt": "2026-03-07"
     }
+  ,
+    {
+      "id": "deployment-replicaset",
+      "path": "docs/deployment-replicaset.md",
+      "title": "Deployment / ReplicaSet",
+      "description": "Deployment/ReplicaSetの二層構造・型定義（Replicas/Selector/Strategy）・DeploymentController/ReplicaSetControllerの役割分担・ローリングアップデートのフロー（MaxUnavailable/MaxSurge）・Recreate戦略・Expectations（二重作成防止）・OwnerReferenceによる親子関係・pod-template-hash・RevisionHistoryLimit",
+      "tags": ["Deployment", "ReplicaSet", "ローリングアップデート", "コントローラ", "reconcile"],
+      "industry": ["IT"],
+      "topics": ["Deployment", "ReplicaSet", "DeploymentController", "ReplicaSetController", "RollingUpdate", "Recreate", "MaxUnavailable", "MaxSurge", "OwnerReference", "Expectations", "pod-template-hash", "syncDeployment"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "configmap-secret",
+      "path": "docs/configmap-secret.md",
+      "title": "ConfigMap / Secret",
+      "description": "ConfigMap/Secretの型定義（Data/BinaryData/StringData/Type）・Secretの種別一覧・Podへの注入方法（環境変数/Volume/envFrom）・kubeletによるVolumeマウントとキャッシュ更新・Immutableフラグの効果・EncryptionConfigurationによるetcd暗号化・KMS連携・subPathの注意点・RBACとの連携",
+      "tags": ["ConfigMap", "Secret", "設定管理", "暗号化", "kubelet"],
+      "industry": ["IT"],
+      "topics": ["ConfigMap", "Secret", "SecretType", "EncryptionConfiguration", "Immutable", "Volume", "envFrom", "kubelet", "KMS", "RBAC"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "garbage-collection",
+      "path": "docs/garbage-collection.md",
+      "title": "GC と OwnerReference",
+      "description": "OwnerReferenceの型定義（UID参照の理由）・GarbageCollector/GraphBuilderの構造・依存グラフの構築（仮想ノード）・Background/Foreground/Orphan削除の3パターン・isDanglingチェック・classifyReferences・Finalizersのセマンティクス（DeletionTimestamp）・代表的なFinalizer・Metadata-only Informer",
+      "tags": ["GC", "OwnerReference", "Finalizers", "削除", "GarbageCollector"],
+      "industry": ["IT"],
+      "topics": ["GarbageCollector", "GraphBuilder", "OwnerReference", "Finalizers", "DeletionTimestamp", "ForegroundDeletion", "OrphanDeletion", "BackgroundDeletion", "isDangling", "virtualNode", "MetadataInformer"],
+      "updatedAt": "2026-03-08"
+    }
   ]
 }
