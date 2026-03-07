@@ -3,6 +3,16 @@
   "lastUpdated": "2026-03-06",
   "documents": [
     {
+      "id": "apiserver",
+      "path": "docs/apiserver.md",
+      "title": "APIServer のリクエストパイプライン",
+      "description": "kube-apiserver のリクエスト処理フロー（Authentication→Authorization→Admission Control→etcd永続化→Watch通知）、サーバーチェーン構造（Aggregator/KubeAPI/APIExtensions）、RBAC・Admission Webhook・ResourceVersion・ServiceAccount・DryRunの概念",
+      "tags": ["APIServer", "Authentication", "Authorization", "RBAC", "Admission", "etcd", "Watch"],
+      "industry": ["IT"],
+      "topics": ["kube-apiserver", "Authentication", "Authorization", "RBAC", "AdmissionControl", "MutatingWebhook", "ValidatingWebhook", "etcd", "ResourceVersion", "Watch", "ServiceAccount", "ServerChain"],
+      "updatedAt": "2026-03-07"
+    },
+    {
       "id": "go-patterns",
       "path": "docs/go-patterns.md",
       "title": "Kubernetes コードの Go パターン集",

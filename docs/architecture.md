@@ -214,15 +214,22 @@ defer       → 確実な後処理（Mutex 解放・シャットダウン）
 
 ### APIServer を理解する
 
-```
-cmd/kube-apiserver/main.go
-  └── app.NewAPIServerCommand()
-      └── Run() → CreateServerChain()
-          └── CreateKubeAPIServer()
-              └── pkg/kubeapiserver/server.go
+詳細は **[docs/apiserver.md](apiserver.md)** を参照。
 
-staging/src/k8s.io/apiserver/pkg/server/genericapiserver.go
-  └── GenericAPIServer（全 APIServer の共通基盤）
+```
+cmd/kube-apiserver/apiserver.go:32
+  └── main() → app.NewAPIServerCommand()
+      └── Run() → CreateServerChain()
+          └── AggregatorServer → KubeAPIServer → APIExtensionsServer（委譲チェーン）
+
+staging/src/k8s.io/apiserver/pkg/endpoints/filters/
+  └── authentication.go / authorization.go（認証・認可フィルタ）
+
+staging/src/k8s.io/apiserver/pkg/admission/
+  └── Admission Control プラグインシステム
+
+staging/src/k8s.io/apiserver/pkg/storage/etcd3/store.go
+  └── etcd への読み書き実装
 ```
 
 ### Scheduler を理解する
