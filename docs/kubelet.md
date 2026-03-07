@@ -99,6 +99,8 @@ PLEG がランタイム側の変化を拾い、kubelet に通知する役割を�
 
 ### 3-3. podWorkers：Pod ごとの worker goroutine
 
+**worker = キューからタスクを取り出して処理する goroutine**。
+
 Pod の追加・更新・削除を受け取ると、podWorkers が **Pod ごとに専用の goroutine** を立て、
 その goroutine が `SyncPod()` を呼ぶ。
 
@@ -106,6 +108,18 @@ Pod の追加・更新・削除を受け取ると、podWorkers が **Pod ごと�
 Pod A → goroutine A → SyncPod(Pod A)
 Pod B → goroutine B → SyncPod(Pod B)  ← 並行して処理できる
 Pod C → goroutine C → SyncPod(Pod C)
+```
+
+なぜ Pod ごとに worker を分けるのか：
+
+```
+worker が1つの場合:
+  Pod A の処理（重い）が終わるまで Pod B・C は待つ
+  → 1つの Pod が詰まるとすべてが止まる
+
+Pod ごとに worker を分けた場合:
+  Pod A・B・C を並列に処理できる
+  → 1つが詰まっても他には影響しない
 ```
 
 同じ Pod への複数の更新は **直列に処理される**（goroutine は1 Pod に1つだけ）。
@@ -160,6 +174,47 @@ kubelet
 kubelet のコードがランタイムの実装に依存しない。
 containerd を CRI-O に切り替えても kubelet のコードを変更しなくてよい。
 
+**containerd とは**:
+
+コンテナを実際に動かすソフトウェア（コンテナランタイム）。
+
+```
+kubelet（「Pod を起動しろ」と管理する係）
+    │ CRI（gRPC）
+    ▼
+containerd（実際にイメージ取得・コンテナ起動・停止をする係）
+    │ OCI
+    ▼
+runc（namespace / cgroups を設定してプロセスを隔離する最小単位）
+    │
+    ▼
+コンテナ（プロセス）
+```
+
+Docker との関係：
+
+```
+昔:
+  kubelet → dockershim → Docker → containerd → runc
+
+今（Kubernetes 1.24 以降）:
+  kubelet → containerd → runc
+  ↑ Docker を経由しなくなった（dockershim が削除された）
+```
+
+Docker は containerd の上に「使いやすい CLI・ネットワーク・ボリューム管理」を乗せたもの。
+Kubernetes はそれらが不要なので containerd を直接使う。
+
+イメージの互換性：
+
+```
+docker build でビルドしたイメージ
+        ↓ OCI 共通規格に従っているため
+containerd がそのまま pull して起動できる
+```
+
+Docker でビルドしたイメージはそのまま Kubernetes で動く。
+
 **実装**（`pkg/kubelet/kuberuntime/`）:
 
 ```
@@ -178,6 +233,57 @@ Pod（ネットワーク名前空間を共有）
   ├── コンテナ A（pause のネットワーク名前空間を使う）
   └── コンテナ B（同上）
 ```
+
+**Pod = 1つ以上のコンテナの集合**:
+
+```
+Pod
+  ├── pause コンテナ（サンドボックス）← 自動で作られる。ユーザーは意識しない
+  ├── app コンテナ（メインのアプリ）
+  └── sidecar コンテナ（補助的な処理）← 省略可
+```
+
+なぜ複数のコンテナをまとめるのか：
+
+```
+「密接に連携する処理は同じ Pod に入れる」という設計思想
+
+例: Web アプリ + ログ収集
+  app コンテナ    : アプリが /var/log にログを書く
+  sidecar コンテナ: そのログを読んで外部に送る（Fluentd など）
+
+→ ファイルシステム（Volume）を共有しているので直接ファイルを渡せる
+→ ネットワークも共有（localhost で通信できる）
+```
+
+同じ Pod 内のコンテナが共有するもの：
+
+```
+共有する:
+  ネットワーク namespace（同じ IP、localhost で通信可）
+  Volume（マウントした場合）
+
+共有しない:
+  プロセス空間（デフォルト）
+  ファイルシステム（Volume でマウントしない限り）
+```
+
+**pause コンテナの役割**:
+
+```
+Pod 起動時、最初に pause コンテナが起動する
+  ↓
+pause コンテナが「ネットワーク namespace」を確保・保持する
+  ↓
+他のコンテナはその namespace に参加する形で起動する
+  ↓
+app コンテナがクラッシュして再起動しても
+namespace（= IP アドレス）は pause コンテナが保持し続ける
+→ Pod の IP が変わらない
+```
+
+pause コンテナは何もしない（文字通り pause しているだけ）。
+IP アドレスの「器」として存在している。
 
 ---
 
@@ -282,11 +388,44 @@ go wait.Until(func() {
 自 Node に割り当てられた Pod だけを Watch する（`spec.nodeName == <自分の Node 名>`）。
 全 Pod を Watch すると apiserver の負荷が大きいため、フィールドセレクタで絞る。
 
-**Q: Static Pod とは何か？**
+**Q: Static Pod とは何か？なぜ必要か？**
 
 apiserver を通さず、ファイルシステム上の YAML ファイルから直接 kubelet が管理する Pod。
 `/etc/kubernetes/manifests/` に置くと自動で起動される。
 etcd・apiserver・controller-manager・scheduler 自体がこの仕組みで動いている（self-hosted）。
+
+**なぜ必要か** → Control Plane コンポーネント自体を起動するための「鶏と卵」問題を解決するため。
+
+```
+通常の Pod の起動フロー:
+  kubectl apply → apiserver → etcd → Scheduler → kubelet → コンテナ起動
+
+問題:
+  apiserver を起動するには kubelet が必要
+  通常の Pod を動かすには apiserver が必要
+  → apiserver 自体を通常の Pod として起動できない（デッドロック）
+
+解決策 = Static Pod:
+  kubelet だけ OS の systemd で起動（apiserver 不要）
+       ↓
+  kubelet が /etc/kubernetes/manifests/ を読む
+       ↓
+  apiserver・etcd・scheduler を Static Pod として直接起動
+       ↓
+  クラスター全体が動き出す
+```
+
+実際の Control Plane Node のファイル構成：
+
+```
+/etc/kubernetes/manifests/
+  etcd.yaml                    ← etcd の Static Pod 定義
+  kube-apiserver.yaml          ← apiserver の Static Pod 定義
+  kube-controller-manager.yaml ← controller-manager の Static Pod 定義
+  kube-scheduler.yaml          ← scheduler の Static Pod 定義
+```
+
+kubelet がこのディレクトリを監視し、ファイルが追加・変更されると自動で起動・再起動する。
 
 **Q: コンテナが crash loop に入ったらどうなるか？**
 
@@ -294,10 +433,81 @@ liveness probe が失敗するか、コンテナが exit code 非ゼロで終了
 `RestartPolicy` に従い、再起動間隔は指数バックオフで増加する（最大 5 分）。
 この状態が `CrashLoopBackOff` として表示される。
 
+**なぜ指数バックオフが必要か**:
+
+即座に再起動し続けると、壊れたコンテナが CPU・メモリを無駄に消費し続けるから。
+
+```
+指数バックオフなし（即座に再起動）:
+  起動 → クラッシュ → 即再起動 → クラッシュ → 即再起動 ...
+  → CPU を無駄消費・ログが大量発生・他の Pod にも影響
+
+指数バックオフあり:
+  クラッシュ → 10秒待つ → 再起動 → クラッシュ
+  → 20秒待つ → 再起動 → クラッシュ
+  → 40秒待つ → ...（最大 5分）
+  → リソース消費を抑えつつ、回復の機会を残す
+```
+
+「指数」の意味（待機時間が2倍ずつ増える）:
+
+```
+等差（10秒ずつ増加）: 10, 20, 30, 40 ... → 300秒まで 29回かかる
+指数（2倍ずつ増加）: 10, 20, 40, 80, 160, 300 → 6回で上限に達する
+                                                   ↑ 短時間で大きな待機時間になる
+```
+
+すぐ直せる問題（設定ミスなど）は早期の再起動で回復でき、
+直せない問題（バグなど）は待機時間が伸びて影響を最小化できる、という両立が理由。
+
 **Q: 「Node が NotReady」になる条件は？**
 
 kubelet が Node Lease を更新しなくなってから一定時間（デフォルト 40 秒）経過すると
 `node-lifecycle-controller` が Node を NotReady に変更し、Pod の Eviction を開始する。
+
+**Eviction とは**:
+
+Pod を強制的に追い出すこと。2種類ある。
+
+**① Node リソース不足による Eviction（kubelet が実行）**:
+
+```
+Node のメモリが逼迫してきた
+       ↓
+kubelet が「このままだと Node ごとクラッシュする」と判断
+       ↓
+優先度の低い Pod を選んで強制削除
+       ↓
+その Pod は別の Node で再スケジュールされる
+
+閾値の例:
+  利用可能メモリ < 100Mi → Eviction 開始
+  ディスク残量   < 10%   → Eviction 開始
+```
+
+**② Node 障害による Eviction（NodeLifecycle Controller が実行）**:
+
+```
+Node が NotReady になった
+       ↓
+NodeLifecycle Controller が NoExecute Taint を付与
+       ↓
+Toleration のない Pod を削除（Eviction）
+       ↓
+別の Node で再スケジュールされる
+```
+
+通常の削除との違い：
+
+```
+kubectl delete pod → ユーザーの意図的な操作
+Eviction          → Kubernetes が自動で行う強制削除
+
+どちらも ReplicaSet が検知して新しい Pod を作る（結果はほぼ同じ、起点が違う）
+```
+
+`PodDisruptionBudget`（PDB）を設定すると「同時に Eviction できる Pod 数の上限」を制限できる。
+ローリングアップデートや Node メンテナンス時に、サービス全断を防ぐために使う。
 
 ---
 
