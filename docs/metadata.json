@@ -123,5 +123,16 @@
       "topics": ["RBAC", "Role", "ClusterRole", "RoleBinding", "ClusterRoleBinding", "PolicyRule", "Subject", "ServiceAccount", "RBACAuthorizer", "RuleAllows", "AggregatedClusterRole", "Authorization"],
       "updatedAt": "2026-03-07"
     }
+  ,
+    {
+      "id": "network",
+      "path": "docs/network.md",
+      "title": "Kubernetes ネットワーク",
+      "description": "Pod/Service/外部ネットワークの3層構成・Serviceが必要な理由（Pod IPの不安定性）・ClusterIP/NodePort/LoadBalancer/ExternalNameの4種類・EndpointSliceの役割・kube-proxyのiptablesルール書き換え・CNIプラグインの役割・NetworkPolicy・CoreDNSによる名前解決",
+      "tags": ["ネットワーク", "Service", "kube-proxy", "CNI", "EndpointSlice", "NetworkPolicy"],
+      "industry": ["IT"],
+      "topics": ["Service", "ClusterIP", "NodePort", "LoadBalancer", "EndpointSlice", "kube-proxy", "iptables", "CNI", "NetworkPolicy", "CoreDNS", "Pod Network"],
+      "updatedAt": "2026-03-07"
+    }
   ]
 }

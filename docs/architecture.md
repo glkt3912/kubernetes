@@ -355,6 +355,24 @@ plugin/pkg/auth/authorizer/rbac/rbac.go
 
 ---
 
+### ネットワークを理解する
+
+詳細は **[docs/network.md](network.md)** を参照。
+
+```
+Pod/Service/外部ネットワークの3層構成
+Service: Pod の前に置く安定した仮想 IP（ClusterIP）
+kube-proxy: iptables ルールを書いて Service → Pod 転送を実現
+
+staging/src/k8s.io/api/core/v1/types.go:5942
+  └── ServiceSpec（Type / Selector / ClusterIP / Ports）
+
+pkg/proxy/iptables/proxier.go
+  └── KUBE-SERVICES チェーン生成（iptables モード）
+```
+
+---
+
 ## 6. 今後の学習ワークフロー
 
 `kubernetes/` ディレクトリで `claude` を起動すると `.mcp.json` が読み込まれ、以下の MCP ツールが利用可能になる。
