@@ -145,5 +145,16 @@
       "topics": ["PersistentVolume", "PersistentVolumeClaim", "StorageClass", "CSI", "ReclaimPolicy", "AccessMode", "VolumeBindingMode", "DynamicProvisioning", "PVController", "AttachDetach"],
       "updatedAt": "2026-03-07"
     }
+  ,
+    {
+      "id": "hpa",
+      "path": "docs/hpa.md",
+      "title": "HPA（Horizontal Pod Autoscaler）",
+      "description": "水平スケールと垂直スケールの違い・HPA Controllerの仕組み（Metrics Server→HPA Controller→Deployment replicas書き換え）・レプリカ数の計算式・スケールアップ上限制限・スケールダウンの安定化ウィンドウ・MetricSpecの4種類（Resource/Pods/Object/External）・Metrics Serverの役割",
+      "tags": ["HPA", "オートスケール", "水平スケール", "Metrics Server", "コントローラ"],
+      "industry": ["IT"],
+      "topics": ["HorizontalPodAutoscaler", "HorizontalController", "ReplicaCalculator", "MetricsServer", "scaleUpLimit", "downscaleStabilisation", "ResourceMetric", "ExternalMetric", "VPA"],
+      "updatedAt": "2026-03-07"
+    }
   ]
 }

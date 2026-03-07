@@ -384,6 +384,23 @@ pkg/proxy/iptables/proxier.go
   └── KUBE-SERVICES チェーン生成（iptables モード）
 ```
 
+### オートスケールを理解する
+
+詳細は **[docs/hpa.md](hpa.md)** を参照。
+
+```
+HPA（Horizontal Pod Autoscaler）:
+  Metrics Server がメトリクスを収集
+  HPA Controller が定期的に確認し Deployment の replicas を書き換える
+  ReplicaSet が Pod を増減させる
+
+pkg/controller/podautoscaler/horizontal.go
+  └── HorizontalController / reconcileAutoscaler()
+
+pkg/controller/podautoscaler/replica_calculator.go
+  └── GetResourceReplicas() - レプリカ数の計算式
+```
+
 ---
 
 ## 6. 今後の学習ワークフロー
