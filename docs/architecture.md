@@ -297,6 +297,62 @@ Lister / HasSynced / Service / PV / PVC
 略称一覧（k8s / CRI / CNI / RBAC / CRD / PLEG 等）
 ```
 
+### API バージョニングを理解する
+
+詳細は **[docs/api-versioning.md](api-versioning.md)** を参照。
+
+```
+External / Internal / Storage の3バージョン構成
+Scheme: GVK ↔ Go型 の登録簿
+Conversion: バージョン間の型変換（internal を中継点に N 個の変換関数）
+
+staging/src/k8s.io/apimachinery/pkg/runtime/scheme.go
+  └── Scheme 構造体・ConvertToVersion
+
+pkg/apis/core/v1/conversion.go        ← 手動変換関数
+pkg/apis/core/v1/zz_generated.conversion.go ← 自動生成変換関数
+```
+
+### Taint / Toleration を理解する
+
+詳細は **[docs/taint-toleration.md](taint-toleration.md)** を参照。
+
+```
+Taint: ノードが Pod を拒否する仕組み
+Toleration: Pod が Taint を許容する設定
+Effect: NoSchedule / PreferNoSchedule / NoExecute
+
+pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
+  └── Filter（配置拒否）・Score（ソフト制約）の実装
+```
+
+### CRD と拡張を理解する
+
+詳細は **[docs/crd.md](crd.md)** を参照。
+
+```
+CRD: 新しいリソース種別をアドオンで追加する仕組み
+Unstructured: CRD リソースの内部表現（map[string]interface{}）
+Conversion Webhook: CRD の複数バージョン間変換
+
+staging/src/k8s.io/apiextensions-apiserver/pkg/apiserver/
+  └── customresource_handler.go  ← 動的エンドポイント生成
+  └── customresource_discovery_controller.go
+```
+
+### RBAC を理解する
+
+詳細は **[docs/rbac-patterns.md](rbac-patterns.md)** を参照。
+
+```
+Role / ClusterRole: 何に何をできるか（PolicyRule の集合）
+RoleBinding / ClusterRoleBinding: 誰に Role を割り当てるか
+ServiceAccount: Pod のアイデンティティ
+
+plugin/pkg/auth/authorizer/rbac/rbac.go
+  └── RBACAuthorizer.Authorize() ← 認可メインロジック
+```
+
 ---
 
 ## 6. 今後の学習ワークフロー

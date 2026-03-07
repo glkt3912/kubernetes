@@ -82,5 +82,46 @@
       "topics": ["kube-apiserver", "kube-controller-manager", "kube-scheduler", "kubelet", "kube-proxy", "etcd", "Informer", "WorkQueue", "Reconciliation Loop", "client-go", "staging"],
       "updatedAt": "2026-03-06"
     }
+  ,
+    {
+      "id": "api-versioning",
+      "path": "docs/api-versioning.md",
+      "title": "API バージョニングと型変換",
+      "description": "External/Internal/Storage の3バージョン構成・Schemeによる型登録（GVK↔Go型マッピング）・Conversionの変換関数登録と実行・ConvertToVersionのフロー・CRDにおけるConversion Webhookの仕組み・コードリーディングの起点",
+      "tags": ["APIバージョニング", "Scheme", "Conversion", "GroupVersionKind", "runtime.Object"],
+      "industry": ["IT"],
+      "topics": ["ExternalVersion", "InternalVersion", "StorageVersion", "Scheme", "Conversion", "GroupVersionKind", "runtime.Object", "ConvertToVersion", "ConversionWebhook", "Unstructured"],
+      "updatedAt": "2026-03-07"
+    },
+    {
+      "id": "taint-toleration",
+      "path": "docs/taint-toleration.md",
+      "title": "Taint / Toleration の仕組み",
+      "description": "Taint/Tolerationの設計思想（ノードが拒否）・型定義（Effect: NoSchedule/PreferNoSchedule/NoExecute）・TaintTolerationプラグインのFilter/Score実装・QueueingHintによる再スケジュール判定・NoExecuteとTolerationSecondsによる退去制御・組み込みTaint一覧",
+      "tags": ["Taint", "Toleration", "Scheduler", "Filter", "Score", "Node管理"],
+      "industry": ["IT"],
+      "topics": ["Taint", "Toleration", "TaintEffect", "NoSchedule", "PreferNoSchedule", "NoExecute", "TolerationSeconds", "TaintToleration", "FilterPlugin", "ScorePlugin", "QueueingHint", "NodeLifecycleController"],
+      "updatedAt": "2026-03-07"
+    },
+    {
+      "id": "crd",
+      "path": "docs/crd.md",
+      "title": "CRD と Kubernetes 拡張",
+      "description": "CRD/Aggregated APIServer/Admission Webhookの拡張方法比較・CRDの型定義（Spec/Names/Versions/Conversion）・APIExtensionsServerの役割・customresource_handlerによる動的エンドポイント生成・Unstructured型・Conversion Webhook・カスタムコントローラの構造・Status/Scale/CELバリデーション",
+      "tags": ["CRD", "CustomResourceDefinition", "拡張", "カスタムコントローラ", "Unstructured"],
+      "industry": ["IT"],
+      "topics": ["CRD", "CustomResourceDefinition", "APIExtensionsServer", "Unstructured", "DynamicClient", "ConversionWebhook", "CELValidation", "StatusSubresource", "ScaleSubresource", "AggregatedAPIServer"],
+      "updatedAt": "2026-03-07"
+    },
+    {
+      "id": "rbac-patterns",
+      "path": "docs/rbac-patterns.md",
+      "title": "RBAC 設計パターン",
+      "description": "Role/ClusterRole/RoleBinding/ClusterRoleBindingの4リソース構成・PolicyRuleの構造（Verbs/APIGroups/Resources）・RBACAuthorizerのAuthorize実装・判定アルゴリズム（ClusterRoleBinding→RoleBinding→NoOpinion）・RuleAllows・Role vs ClusterRoleの設計判断・ServiceAccountとの連携・最小権限パターン・AggregatedClusterRole",
+      "tags": ["RBAC", "認可", "ServiceAccount", "Role", "ClusterRole", "PolicyRule"],
+      "industry": ["IT"],
+      "topics": ["RBAC", "Role", "ClusterRole", "RoleBinding", "ClusterRoleBinding", "PolicyRule", "Subject", "ServiceAccount", "RBACAuthorizer", "RuleAllows", "AggregatedClusterRole", "Authorization"],
+      "updatedAt": "2026-03-07"
+    }
   ]
 }
