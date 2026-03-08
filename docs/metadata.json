@@ -222,5 +222,49 @@
       "topics": ["Job", "CronJob", "completions", "parallelism", "backoffLimit", "IndexedJob", "backoffLimitPerIndex", "PodFailurePolicy", "concurrencyPolicy", "startingDeadlineSeconds", "syncCronJob", "exponentialBackoff"],
       "updatedAt": "2026-03-08"
     }
+  ,
+    {
+      "id": "etcd",
+      "path": "docs/etcd.md",
+      "title": "etcd と Kubernetes の永続化レイヤー",
+      "description": "etcdがKubernetes唯一の永続化ストアである理由・MVCC（Multi-Version Concurrency Control）とResourceVersionの対応・楽観的ロック（CAS: Compare-And-Swap）・Watch メカニズム・kube-apiserverのStorageレイヤー構造（etcd3.store）・etcdキーパス設計（/registry/）・Compact（コンパクション）・LeaseManager（TTL Lease再利用）・EncryptionConfiguration・etcdクラスタのHA構成（Raft）",
+      "tags": ["etcd", "MVCC", "Watch", "永続化", "ResourceVersion", "CAS"],
+      "industry": ["IT"],
+      "topics": ["etcd", "MVCC", "ResourceVersion", "CAS", "Watch", "Compaction", "LeaseManager", "EncryptionConfiguration", "Raft", "etcd3.store", "pathPrefix", "Linearizable"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "leader-election",
+      "path": "docs/leader-election.md",
+      "title": "Leader Election（リーダーエレクション）",
+      "description": "Leader Electionが必要な理由（冗長化コンポーネントの競合防止）・Lease リソース（coordination.k8s.io/v1）・LeaderElectionConfig（LeaseDuration/RenewDeadline/RetryPeriod）・LeaderCallbacks（OnStartedLeading/OnStoppedLeading）・acquire/renew/tryAcquireOrRenewのフロー・kube-controller-managerでの使い方・フェイルオーバー時間の計算・JitterFactorの役割",
+      "tags": ["Leader Election", "Lease", "HA", "kube-controller-manager", "kube-scheduler"],
+      "industry": ["IT"],
+      "topics": ["LeaderElection", "Lease", "LeaseLock", "LeaseDuration", "RenewDeadline", "RetryPeriod", "OnStartedLeading", "OnStoppedLeading", "acquire", "renew", "tryAcquireOrRenew", "JitterFactor", "Failover"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "admission-control",
+      "path": "docs/admission-control.md",
+      "title": "Admission Control（アドミッションコントロール）",
+      "description": "Admission Controlの2フェーズ（Mutating→Validating）・組み込みプラグイン一覧（NamespaceLifecycle/LimitRanger/ServiceAccount/ResourceQuota/PodSecurity）・chainAdmissionHandlerの実行ロジック・MutatingWebhookConfiguration/ValidatingWebhookConfigurationの設定・Webhook呼び出しフロー（AdmissionReview）・JSONPatchによる変更・Reinvocationポリシー・ValidatingAdmissionPolicy（CELベース）・failurePolicyの重要性",
+      "tags": ["AdmissionControl", "MutatingWebhook", "ValidatingWebhook", "CEL", "kube-apiserver"],
+      "industry": ["IT"],
+      "topics": ["MutatingAdmission", "ValidatingAdmission", "AdmissionPlugin", "MutatingWebhookConfiguration", "ValidatingWebhookConfiguration", "AdmissionReview", "JSONPatch", "ReinvocationPolicy", "ValidatingAdmissionPolicy", "CEL", "failurePolicy", "namespaceSelector"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "node-lifecycle",
+      "path": "docs/node-lifecycle.md",
+      "title": "Node Lifecycle と Eviction（ノードライフサイクルと退避）",
+      "description": "NodeLifecycleControllerの役割（ノード健全性監視→Taint付与→Pod退避）・heartbeatの2方式（NodeStatus/Lease）・nodeConditionToTaintKeyStatusMap（Ready=False→not-ready, Unknown→unreachable）・ZoneStateによるRate制限（Normal/PartialDisruption/FullDisruption）・TaintEvictionController・tolerationSecondsによる退避タイミング・PodDisruptionBudget（kubectl drainとの違い）・nodeMonitorGracePeriod",
+      "tags": ["Node Lifecycle", "Eviction", "Taint", "NodeLifecycleController", "PDB"],
+      "industry": ["IT"],
+      "topics": ["NodeLifecycleController", "TaintEviction", "NodeCondition", "NodeLease", "nodeMonitorGracePeriod", "ZoneState", "PartialDisruption", "FullDisruption", "TaintBasedEviction", "PodDisruptionBudget", "tolerationSeconds", "cordon", "drain"],
+      "updatedAt": "2026-03-08"
+    }
   ]
 }
