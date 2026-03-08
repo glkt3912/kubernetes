@@ -641,6 +641,132 @@ Service Controller が自動で管理する（手動で操作することは少�
 
 ---
 
+## リソース管理
+
+### ResourceQuota
+
+Namespace 全体のリソース（CPU・メモリ・Pod 数・Service 数など）の**合計上限**を設定する仕組み。
+上限を超えた Pod の作成は Admission Plugin が拒否する。
+
+```
+kubectl get resourcequota -n dev
+# NAME       AGE   REQUEST           LIMIT
+# dev-quota  1d    cpu: 3/10, ...
+```
+
+詳細は **[resource-quota.md](resource-quota.md)** を参照。
+
+### LimitRange
+
+Namespace 内の Pod / Container 個別に、リソースの**デフォルト値・上限・下限**を設定する仕組み。
+`requests/limits` を書かなかった Container に自動で値を注入する（LimitRanger Admission Plugin）。
+
+詳細は **[resource-quota.md](resource-quota.md)** を参照。
+
+### QoS クラス（Quality of Service）
+
+kubelet がメモリ不足時に Pod を退去させる優先度を決めるクラス。`kubectl get pod -o yaml` の `status.qosClass` で確認できる。
+
+| クラス | 条件 | OOMKill されやすさ |
+|---|---|---|
+| Guaranteed | 全コンテナで `requests == limits` | 最後（されにくい）|
+| Burstable | 一部でも requests/limits あり | 中間 |
+| BestEffort | requests も limits も未設定 | 最初（されやすい）|
+
+---
+
+## Pod ライフサイクル
+
+### Init Container
+
+通常コンテナが起動する**前に順番に実行される**初期化専用コンテナ。
+DB 接続待ち・マイグレーション・設定ファイル生成などに使う。
+全 Init Container が成功して初めて通常コンテナが起動する。
+
+詳細は **[pod-lifecycle.md](pod-lifecycle.md)** を参照。
+
+### Sidecar Container
+
+Kubernetes 1.29+ で正式対応。`initContainers` に `restartPolicy: Always` を設定すると
+Init Container の起動順序を維持しつつ、通常コンテナと同期間動き続ける。
+ログエージェント・プロキシなどに使う。
+
+### PostStart / PreStop
+
+コンテナの**起動直後**（PostStart）・**終了直前**（PreStop）に実行される Lifecycle フック。
+
+```
+PostStart: コンテナ起動 → フック実行（完了まで Ready にならない）
+PreStop:   Pod 削除 → フック実行 → SIGTERM → terminationGracePeriodSeconds 経過 → SIGKILL
+```
+
+### terminationGracePeriodSeconds
+
+Pod 削除時に SIGKILL を送るまでの猶予時間（デフォルト 30 秒）。
+PreStop フックの実行時間を含む合計値。
+
+### LivenessProbe / ReadinessProbe / StartupProbe
+
+コンテナの状態を定期的にチェックするヘルスチェック機構。
+
+| Probe | 失敗時 | 用途 |
+|---|---|---|
+| Liveness | コンテナ再起動 | デッドロック検出 |
+| Readiness | Endpoints から除外（トラフィックが来なくなる）| 一時的な高負荷・起動中 |
+| Startup | コンテナ再起動（成功まで他 Probe は無効）| 起動の遅いアプリ |
+
+詳細は **[pod-lifecycle.md](pod-lifecycle.md)** を参照。
+
+### CrashLoopBackOff
+
+コンテナが繰り返し失敗・再起動している状態。kubelet が指数バックオフ（10s → 20s → ... → 5 分）で
+再起動を遅らせるため、`kubectl get pod` の STATUS に表示される。
+
+### Ephemeral Container（エフェメラルコンテナ）
+
+実行中の Pod にデバッグ用コンテナを一時的に追加する機能（1.23 GA）。
+`kubectl debug -it <pod> --image=busybox` で追加する。Pod を再起動せずにデバッグできる。
+
+---
+
+## DNS
+
+### ndots
+
+`/etc/resolv.conf` の `options ndots:N` で設定される値。
+「ドット数が N 未満の名前は search ドメインを補完してから解決する」ルール。
+Kubernetes のデフォルトは `ndots:5`。外部ドメインへのクエリに余分な試みが走ることがある。
+
+### search ドメイン
+
+`/etc/resolv.conf` の `search` 行に書かれるドメインサフィックスリスト。
+kubelet が Pod の `/etc/resolv.conf` に自動で設定する。
+
+```
+search default.svc.cluster.local svc.cluster.local cluster.local
+```
+
+これにより `my-service` という短縮名で `my-service.default.svc.cluster.local` を解決できる。
+
+詳細は **[coredns.md](coredns.md)** を参照。
+
+---
+
+## Operator パターン
+
+### Operator
+
+**CRD + カスタムコントローラ** の組み合わせ。アプリケーション固有の運用知識（バックアップ・バージョンアップ・フェイルオーバーなど）を Reconciliation Loop に実装したもの。
+
+### Reconciler
+
+Operator（またはコントローラ）の中心となる型。`Reconcile(ctx, req)` メソッドを実装し、
+CR のあるべき状態と現状の差分を解消する処理を担う。
+
+詳細は **[operator-pattern.md](operator-pattern.md)** を参照。
+
+---
+
 ## ストレージ関連
 
 ### PersistentVolume (PV) / PersistentVolumeClaim (PVC)
@@ -676,6 +802,8 @@ PV が StorageClass で自動プロビジョニングされる場合は PV を�
 | GVR | GroupVersionResource |
 | OOM | Out Of Memory |
 | PLEG | Pod Lifecycle Event Generator |
+| QoS | Quality of Service（Pod のリソース保証クラス）|
+| LB | Load Balancer |
 
 ---
 
@@ -689,4 +817,9 @@ PV が StorageClass で自動プロビジョニングされる場合は PV を�
 | APIServer パイプライン | [apiserver.md](apiserver.md) |
 | kubelet / CRI / Probe | [kubelet.md](kubelet.md) |
 | Go パターン（goroutine / channel 等） | [go-patterns.md](go-patterns.md) |
+| ResourceQuota / LimitRange / QoS | [resource-quota.md](resource-quota.md) |
+| VPA（垂直スケール）| [vpa.md](vpa.md) |
+| Operator パターン / controller-runtime | [operator-pattern.md](operator-pattern.md) |
+| CoreDNS / ndots / search ドメイン | [coredns.md](coredns.md) |
+| Pod Lifecycle / Init Container / Probe | [pod-lifecycle.md](pod-lifecycle.md) |
 | アーキテクチャ全体像 | [architecture.md](architecture.md) |
