@@ -189,8 +189,8 @@ Kubernetes の全コントローラに共通する設計パターン。
 | 優先度 | ドキュメント |
 |---|---|
 | ★★★ | 用語集 / Informer / コントローラパターン / Go パターン / APIServer |
-| ★★  | kubelet / Deployment・ReplicaSet / Scheduler / etcd / Network / Taint・Toleration |
-| ★   | StatefulSet / DaemonSet / Node Lifecycle / Leader Election / Admission Control / ConfigMap・Secret / Storage / HPA / RBAC / GC / Job・CronJob / API バージョニング / CRD |
+| ★★  | kubelet / Deployment・ReplicaSet / Scheduler / etcd / Network / Taint・Toleration / Node Affinity・Pod Affinity / PriorityClass・Preemption / Ingress・Gateway API |
+| ★   | StatefulSet / DaemonSet / Node Lifecycle / Leader Election / Admission Control / ConfigMap・Secret / Storage / HPA / RBAC / GC / Job・CronJob / API バージョニング / CRD / ServiceAccount / Pod Security Admission / Namespace・マルチテナンシー |
 
 ### ★★★ Informer を理解する
 
@@ -527,6 +527,30 @@ pkg/controller/cronjob/cronjob_controllerv2.go
 ### ★ Node Lifecycle を理解する
 
 詳細は **[docs/node-lifecycle.md](node-lifecycle.md)** を参照。
+
+### ★★ Node Affinity / Pod Affinity を理解する
+
+詳細は **[docs/affinity.md](affinity.md)** を参照。
+
+### ★★ PriorityClass / Preemption を理解する
+
+詳細は **[docs/priority-class.md](priority-class.md)** を参照。
+
+### ★★ Ingress / Gateway API を理解する
+
+詳細は **[docs/ingress.md](ingress.md)** を参照。
+
+### ★ ServiceAccount を理解する
+
+詳細は **[docs/serviceaccount.md](serviceaccount.md)** を参照。
+
+### ★ Pod Security Admission を理解する
+
+詳細は **[docs/pod-security.md](pod-security.md)** を参照。
+
+### ★ Namespace とマルチテナンシーを理解する
+
+詳細は **[docs/multitenancy.md](multitenancy.md)** を参照。
 
 ---
 

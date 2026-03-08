@@ -321,5 +321,71 @@
       "topics": ["PodPhase", "PodCondition", "InitContainer", "SidecarContainer", "PostStart", "PreStop", "LivenessProbe", "ReadinessProbe", "StartupProbe", "RestartPolicy", "CrashLoopBackOff", "QoSGuaranteed", "QoSBurstable", "QoSBestEffort", "GracefulTermination", "EphemeralContainer", "terminationGracePeriodSeconds"],
       "updatedAt": "2026-03-08"
     }
+  ,
+    {
+      "id": "affinity",
+      "path": "docs/affinity.md",
+      "title": "Node Affinity / Pod Affinity",
+      "description": "NodeSelector→NodeAffinity→PodAffinityの段階的発展・RequiredDuringSchedulingIgnoredDuringExecution（必須）とPreferredDuringScheduling（優先）の違い・topologyKey（hostname/zone/region）によるトポロジー制約・PodAffinityによる同一ノード/ゾーン配置・PodAntiAffinityによるHA分散パターン・InterPodAffinityプラグインの実装（O(Node×Pod)のコスト注意）",
+      "tags": ["Affinity", "NodeAffinity", "PodAffinity", "PodAntiAffinity", "Scheduler", "topologyKey"],
+      "industry": ["IT"],
+      "topics": ["NodeSelector", "NodeAffinity", "PodAffinity", "PodAntiAffinity", "topologyKey", "RequiredDuringScheduling", "PreferredDuringScheduling", "InterPodAffinity", "FilterPlugin", "ScorePlugin", "HA"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "priority-class",
+      "path": "docs/priority-class.md",
+      "title": "PriorityClass と Preemption（プリエンプション）",
+      "description": "PriorityClassの型定義（Value/GlobalDefault/PreemptionPolicy）・システム組み込みPriorityClass（system-cluster-critical/system-node-critical）・Preemptionの動作フロー（PostFilter→Preempt→Victim選択→Evict→nominatedNodeName）・SelectVictimsOnNode・preemptionPolicy: Never・PodDisruptionBudgetとの関係・スケジューリングキューとの連携・優先度設計のベストプラクティス",
+      "tags": ["PriorityClass", "Preemption", "Scheduler", "nominatedNodeName", "PDB"],
+      "industry": ["IT"],
+      "topics": ["PriorityClass", "Preemption", "PreemptionPolicy", "nominatedNodeName", "SelectVictimsOnNode", "Evaluator", "PostFilter", "PodDisruptionBudget", "SchedulingQueue", "SystemClusterCritical", "SystemNodeCritical"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "ingress",
+      "path": "docs/ingress.md",
+      "title": "Ingress / Gateway API",
+      "description": "Ingressの必要性（1LB→複数Service）・型定義（IngressSpec/IngressRule/IngressBackend）・pathType（Exact/Prefix/ImplementationSpecific）・IngressClass・主なIngress Controller比較（nginx/ALB/Traefik/Istio/Kong）・TLS終端とcert-manager連携・Gateway API（1.28 GA）の役割分担（GatewayClass/Gateway/HTTPRoute）・Ingressとの比較・対応プロトコル（HTTP/gRPC/TCP/TLS/UDP）",
+      "tags": ["Ingress", "Gateway API", "HTTPRoute", "TLS", "L7 ロードバランサ", "IngressClass"],
+      "industry": ["IT"],
+      "topics": ["Ingress", "IngressSpec", "IngressRule", "IngressBackend", "pathType", "IngressClass", "GatewayAPI", "GatewayClass", "Gateway", "HTTPRoute", "GRPCRoute", "TCPRoute", "TLSTermination", "cert-manager"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "serviceaccount",
+      "path": "docs/serviceaccount.md",
+      "title": "ServiceAccount と TokenRequest",
+      "description": "ServiceAccountの型定義（AutomountServiceAccountToken）・デフォルトSA・PodへのトークンマウントパスとJWTの使い方・自動マウント無効化・Bound Service Account Token（1.22 GA）の有効期限・Pod/Namespace/audienceへのバインド・kubeletによる自動ローテーション・TokenRequest APIで明示的なトークン取得・RBACとの連携パターン・AWS IRSA / GKE Workload Identity・セキュリティベストプラクティス",
+      "tags": ["ServiceAccount", "TokenRequest", "JWT", "RBAC", "IRSA", "Workload Identity"],
+      "industry": ["IT"],
+      "topics": ["ServiceAccount", "AutomountServiceAccountToken", "BoundServiceAccountToken", "TokenRequestAPI", "privateClaims", "RBAC", "IRSA", "WorkloadIdentity", "ProjectedVolume", "ServiceAccountValidator"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "pod-security",
+      "path": "docs/pod-security.md",
+      "title": "Pod Security Admission（PSA）",
+      "description": "PSAの3プロファイル（privileged/baseline/restricted）・3モード（enforce/audit/warn）・Namespaceラベルによる設定・PodSecurity Admission Pluginの実装フロー・restrictedプロファイルの要件（runAsNonRoot/seccomp/capabilities drop）・段階的移行手順（warn→audit→enforce）・PSP（削除済み）との違い・OPA/Kyverno との比較",
+      "tags": ["PodSecurity", "PSA", "SecurityContext", "restricted", "baseline", "privileged", "Namespace"],
+      "industry": ["IT"],
+      "topics": ["PodSecurityAdmission", "PodSecurityStandards", "restricted", "baseline", "privileged", "enforce", "audit", "warn", "runAsNonRoot", "seccompProfile", "capabilities", "PodSecurity", "PSP", "OPA", "Kyverno"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "multitenancy",
+      "path": "docs/multitenancy.md",
+      "title": "Namespace とマルチテナンシー設計",
+      "description": "Namespaceの役割（リソース分離）とできること・できないこと・組み込みNamespace4種・3つの設計パターン（per Team/Application/Environment）・完全分離に必要な5要素（RBAC+ResourceQuota+LimitRange+NetworkPolicy+PSA）・標準Namespaceテンプレート（YAML）・Namespaceをまたいだ通信制御・Hierarchical Namespace Controller（HNC）・クラスターレベル分離との比較（vcluster/別クラスター）",
+      "tags": ["Namespace", "マルチテナンシー", "ResourceQuota", "NetworkPolicy", "RBAC", "HNC"],
+      "industry": ["IT"],
+      "topics": ["Namespace", "Multitenancy", "ResourceQuota", "LimitRange", "NetworkPolicy", "RBAC", "PodSecurityAdmission", "HierarchicalNamespace", "HNC", "vcluster", "namespaceSelector", "NamespaceLifecycle"],
+      "updatedAt": "2026-03-08"
+    }
   ]
 }
