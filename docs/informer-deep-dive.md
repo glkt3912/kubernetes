@@ -477,7 +477,84 @@ DeleteFunc では必ずこちらを使う。
 
 ---
 
-## 6. 次に読むべきファイル
+## 6. Reflector → DeltaFIFO → Indexer + sharedProcessor フロー（Mermaid）
+
+```mermaid
+flowchart TD
+    API[kube-apiserver] -->|List + Watch| Reflector
+    Reflector -->|Add/Update/Delete/Replace| DF[DeltaFIFO\n差分キュー]
+    DF -->|Pop| HD[handleDeltas]
+    HD -->|更新| Indexer[Indexer\nローカルキャッシュ]
+    HD -->|通知| SP[sharedProcessor]
+    SP -->|OnAdd/OnUpdate/OnDelete| L1[Listener A\nコントローラ 1]
+    SP -->|OnAdd/OnUpdate/OnDelete| L2[Listener B\nコントローラ 2]
+    SP -->|OnAdd/OnUpdate/OnDelete| L3[Listener C\nコントローラ 3]
+    L1 --> WQ1[WorkQueue A]
+    L2 --> WQ2[WorkQueue B]
+    L3 --> WQ3[WorkQueue C]
+```
+
+---
+
+## 7. 設計の Why（なぜそう作られているのか）
+
+**Q: なぜ DeltaFIFO と Indexer が別々なのか？**
+
+責務が異なるため。
+
+- **DeltaFIFO**: 「通知の順序と差分型（Added/Updated/Deleted）」を保持し、変更の経緯を正確に追跡する
+- **Indexer**: 「現在状態の高速検索」を担い、namespace などのインデックスで O(1) アクセスを提供する
+
+両者を分離することで、それぞれが自分の責務に集中できる。
+
+**Q: なぜ SharedInformer が必要か？**
+
+同じリソースを複数のコントローラが Watch するとき、Watch コネクションを 1 本に集約して apiserver の負荷を最小化するため。
+N 個のコントローラが各自で Watch すると N 本のコネクションが張られるが、SharedInformer を使うと 1 本で済む。
+sharedProcessor が 1 本の Watch イベントを全リスナーに配信する仕組みがこれを実現する。
+
+**Q: なぜ Resync（定期再同期）があるのか？**
+
+Watch イベントを取りこぼした場合の安全網として機能するため。
+Watch が切断・再接続される間に発生したイベントは取りこぼす可能性がある。
+Resync はキャッシュにある全オブジェクトを定期的に OnUpdate で再通知し、
+コントローラが取りこぼしたイベントをカバーする。apiserver への追加アクセスは発生しない。
+
+---
+
+## 8. 障害・運用観点
+
+### よくある障害パターン
+
+| 症状 | 根本原因 | 調査コマンド |
+|---|---|---|
+| "too old resource version" エラー | Watch の ResourceVersion が期限切れ → フル List 再取得が走る | コントローラのログで `expired` エラー確認 |
+| `HasSynced` が長時間 `false` | 初期 List が大量オブジェクトにより遅延 | `reflector_list_duration_seconds` メトリクス確認 |
+| コントローラが古い状態で reconcile | Watch 切断から再接続までの間に Indexer が古い状態 | write 時の conflict エラーリトライで対処済み |
+| sharedProcessor のバッファ溢れ | OnAdd/OnUpdate ハンドラが重い処理をしている | ハンドラ内でキーを enqueue するだけにする |
+
+### よく使う調査コマンド
+
+```bash
+# コントローラのログで Informer 関連エラー確認
+kubectl logs -n kube-system -l component=kube-controller-manager | grep -i "watch\|list\|expired"
+
+# Informer の同期状態確認（コントローラ起動直後）
+kubectl logs -n kube-system <controller-pod> | grep "Waiting for caches"
+```
+
+### 主要 Prometheus メトリクス
+
+| メトリクス名 | 意味 | アラート基準例 |
+|---|---|---|
+| `reflector_watch_duration_seconds` | Watch セッションの持続時間 | 極端に短い（short watch が多い）場合は Watch が頻繁に切断されている |
+| `reflector_short_watches_total` | 短時間で切断された Watch の累計数 | 増加傾向でアラート |
+| `reflector_list_duration_seconds` | 初回 List + 再接続時 List の所要時間 | p99 > 30s でアラート（大規模クラスタ） |
+| `reflector_items_per_list` | 1 回の List で取得したオブジェクト数 | 急増はキャッシュ未整合の可能性 |
+
+---
+
+## 9. 次に読むべきファイル
 
 ### Reflector の ListAndWatch 本体
 
