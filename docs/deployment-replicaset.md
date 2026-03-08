@@ -248,7 +248,91 @@ Status.Conditions:
 
 ---
 
-## 10. コードリーディングの起点
+## 10. ローリングアップデートのシーケンス（Mermaid）
+
+```mermaid
+sequenceDiagram
+    participant DC as DeploymentController
+    participant API as kube-apiserver
+    participant RS_old as ReplicaSet v1 (replicas=3)
+    participant RS_new as ReplicaSet v2 (replicas=0)
+
+    DC ->> API: Create ReplicaSet v2
+    API -->> DC: OK
+    loop maxSurge / maxUnavailable を守りながら
+        DC ->> RS_new: replicas+1（スケールアップ）
+        Note over RS_new: 新 Pod が Ready になるまで待つ
+        DC ->> RS_old: replicas-1（スケールダウン）
+    end
+    DC ->> RS_old: replicas=0（保持・ロールバック用）
+```
+
+---
+
+## 11. 設計の Why（なぜそう作られているのか）
+
+**Q: なぜ Deployment が直接 Pod を管理しないのか？**
+
+ローリングアップデート中は旧版・新版の Pod が同時に存在するため、
+各世代を独立した ReplicaSet で管理することで責務を明確に分離できるから。
+Deployment は「どの ReplicaSet を何台にするか」だけを制御し、
+Pod の実際の増減は ReplicaSet Controller に委ねる。
+これにより ReplicaSet 単体でも汎用的に利用できる。
+
+**Q: なぜ `pod-template-hash` を ReplicaSet 名に含めるのか？**
+
+Pod テンプレートのハッシュから ReplicaSet を唯一識別し、
+別テンプレートが偶然に同じ ReplicaSet を乗っ取る事故を防ぐため。
+ハッシュが異なれば必ず異なる ReplicaSet が作られるため、世代の混在が起きない。
+
+**Q: なぜ `RevisionHistoryLimit` で古い ReplicaSet を保持するのか？**
+
+`replicas=0` の ReplicaSet を残すことで `kubectl rollout undo` による即時ロールバックを可能にするため。
+Pod テンプレートの情報が ReplicaSet に記録されており、ロールバック時にその世代の仕様をそのまま使える。
+削除してしまうとロールバック先がなくなる。
+
+---
+
+## 12. 障害・運用観点
+
+### よくある障害パターン
+
+| 症状 | 根本原因 | 調査コマンド |
+|---|---|---|
+| ロールアウトが途中で止まる | maxUnavailable=0, maxSurge=0 の設定ミス、または新 Pod が Ready にならない | `kubectl rollout status deployment/<name>` + `kubectl describe pod <new-pod>` |
+| `ProgressDeadlineExceeded` | 600 秒（デフォルト）以内にロールアウトが完了しない | `kubectl describe deployment <name>` の Conditions 確認 |
+| ロールバック方法 | — | `kubectl rollout undo deployment/<name>` または `kubectl rollout undo deployment/<name> --to-revision=N` |
+| 旧 Pod が消えない（Recreate） | 旧 RS の Pod 削除が完了していない | `kubectl get pods` で Terminating 状態確認 |
+| ReplicaSet が大量に残っている | `revisionHistoryLimit` が大きすぎる | `kubectl get rs` で確認し、必要なら値を下げる |
+
+### よく使う調査コマンド
+
+```bash
+# ロールアウトの進行状況確認
+kubectl rollout status deployment/<name>
+
+# ロールアウト履歴確認
+kubectl rollout history deployment/<name>
+
+# 特定リビジョンにロールバック
+kubectl rollout undo deployment/<name> --to-revision=2
+
+# Deployment の詳細確認（Conditions / Events）
+kubectl describe deployment <name>
+```
+
+### 主要 Prometheus メトリクス
+
+| メトリクス名 | 意味 | アラート基準例 |
+|---|---|---|
+| `kube_deployment_status_replicas_unavailable` | 利用不可な Pod 数 | > 0 が長時間続くでアラート |
+| `kube_deployment_spec_replicas` | 望ましい Pod 数 | 急変でアラート（意図しないスケール）|
+| `kube_replicaset_status_ready_replicas` | Ready な Pod 数 | `spec_replicas` との差異でアラート |
+| `kube_deployment_status_observed_generation` | Deployment の観測済み世代 | `metadata.generation` との差が長時間続くなら controller が機能していない |
+
+---
+
+## 13. コードリーディングの起点
 
 | 処理 | ファイル |
 |---|---|
