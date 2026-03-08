@@ -266,5 +266,60 @@
       "topics": ["NodeLifecycleController", "TaintEviction", "NodeCondition", "NodeLease", "nodeMonitorGracePeriod", "ZoneState", "PartialDisruption", "FullDisruption", "TaintBasedEviction", "PodDisruptionBudget", "tolerationSeconds", "cordon", "drain"],
       "updatedAt": "2026-03-08"
     }
+  ,
+    {
+      "id": "resource-quota",
+      "path": "docs/resource-quota.md",
+      "title": "ResourceQuota / LimitRange",
+      "description": "ResourceQuota（Namespace全体の合計リソース上限）とLimitRange（Pod/Container個別のデフォルト値・上限・下限）の役割と違い・型定義（ResourceQuotaSpec/LimitRangeItem）・Scope（Terminating/BestEffort等）・QoSクラス（Guaranteed/Burstable/BestEffort）・ResourceQuota ControllerのsyncResourceQuotaフロー・Admission Pluginによる強制・LimitRangerのデフォルト値注入・トラブルシュート",
+      "tags": ["ResourceQuota", "LimitRange", "リソース管理", "Namespace", "QoS", "Admission"],
+      "industry": ["IT"],
+      "topics": ["ResourceQuota", "LimitRange", "ResourceQuotaSpec", "LimitRangeItem", "ResourceQuotaScope", "QoSGuaranteed", "QoSBurstable", "QoSBestEffort", "ResourceQuotaController", "LimitRanger", "AdmissionPlugin", "replenishQuota"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "vpa",
+      "path": "docs/vpa.md",
+      "title": "VPA（Vertical Pod Autoscaler）",
+      "description": "HPAとの違い（水平vs垂直スケール）・VPAの3コンポーネント（Recommender/Updater/Admission Controller）の役割・VPAオブジェクトのupdateMode（Off/Initial/Recreate/Auto）・resourcePolicyによる推奨値の上下限設定・インプレース更新（InPlacePodVerticalScaling）・HPAとの同時使用の注意・メリット・デメリット・実装リポジトリ（kubernetes/autoscaler）",
+      "tags": ["VPA", "垂直スケール", "オートスケール", "Recommender", "Updater"],
+      "industry": ["IT"],
+      "topics": ["VerticalPodAutoscaler", "VPA", "Recommender", "Updater", "AdmissionController", "updateMode", "resourcePolicy", "InPlacePodVerticalScaling", "ContainerResizePolicy", "HPA"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "operator-pattern",
+      "path": "docs/operator-pattern.md",
+      "title": "Operator パターン",
+      "description": "Operator（CRD+カスタムコントローラ）の定義と設計思想・CRD・カスタムリソース・カスタムコントローラの3要素・Reconciliation Loopの実装パターン（Get/Create/Update/Status）・StatusサブリソースとConditions・Operatorの成熟度レベル（Level 1〜5）・controller-runtime/kubebuilderの使い方（For/Owns/SetupWithManager）・OwnerReferenceによる子リソース管理・Finalizerによるクリーンアップ・有名なOperator事例",
+      "tags": ["Operator", "CRD", "カスタムコントローラ", "controller-runtime", "kubebuilder", "Reconcile"],
+      "industry": ["IT"],
+      "topics": ["Operator", "CRD", "CustomResource", "Reconcile", "controller-runtime", "kubebuilder", "OwnerReference", "Finalizer", "StatusSubresource", "Conditions", "SetupWithManager", "For", "Owns"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "coredns",
+      "path": "docs/coredns.md",
+      "title": "CoreDNS と Kubernetes の DNS 解決",
+      "description": "CoreDNSの役割（Service名→ClusterIP解決）・DNS名の命名規則（service.namespace.svc.cluster.local）・短縮名解決の仕組み（searchドメイン）・ndots:5の意味と外部DNS解決への影響・StatefulSetのPod DNS名（Headless Service）・Corefile設定とプラグインチェーン（kubernetes/forward/cache）・kubeletがPodの/etc/resolv.confを生成する仕組み・PodのdnsPolicy（ClusterFirst/Default/None）・NodeLocal DNSCache・トラブルシュート",
+      "tags": ["CoreDNS", "DNS", "Service", "Headless Service", "ndots", "resolv.conf", "kubelet"],
+      "industry": ["IT"],
+      "topics": ["CoreDNS", "DNS", "searchDomain", "ndots", "Corefile", "kubernetesPlugin", "forwardPlugin", "dnsPolicy", "ClusterFirst", "NodeLocalDNSCache", "HeadlessService", "resolvConf", "kubelet"],
+      "updatedAt": "2026-03-08"
+    }
+  ,
+    {
+      "id": "pod-lifecycle",
+      "path": "docs/pod-lifecycle.md",
+      "title": "Pod Lifecycle（Pod のライフサイクル）",
+      "description": "Podのフェーズ（Pending/Running/Succeeded/Failed/Unknown）・起動シーケンス（Volume→InitContainer→コンテナ→PostStart→StartupProbe→ReadinessProbe）・Init Container（順次実行・依存関係解決）・Sidecar Container（restartPolicy: Always）・Lifecycleフック（PostStart/PreStop）・3種類のProbe（Liveness/Readiness/Startup）とパラメータ・RestartPolicy（Always/OnFailure/Never）・CrashLoopBackOff・QoSクラス（Guaranteed/Burstable/BestEffort）・Graceful Terminationシーケンス・Ephemeral Container",
+      "tags": ["Pod", "ライフサイクル", "Init Container", "Probe", "PostStart", "PreStop", "QoS", "Graceful Termination"],
+      "industry": ["IT"],
+      "topics": ["PodPhase", "PodCondition", "InitContainer", "SidecarContainer", "PostStart", "PreStop", "LivenessProbe", "ReadinessProbe", "StartupProbe", "RestartPolicy", "CrashLoopBackOff", "QoSGuaranteed", "QoSBurstable", "QoSBestEffort", "GracefulTermination", "EphemeralContainer", "terminationGracePeriodSeconds"],
+      "updatedAt": "2026-03-08"
+    }
   ]
 }
