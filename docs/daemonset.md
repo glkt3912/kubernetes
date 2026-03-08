@@ -215,6 +215,80 @@ type DaemonSetStatus struct {
 
 ---
 
+## 11. Node 追加時の DaemonSet Pod 自動作成（Mermaid）
+
+```mermaid
+flowchart TD
+    NodeAdd[Node 追加イベント] -->|addNode| NQ[nodeUpdateQueue]
+    NQ --> Sync[syncDaemonSet]
+    Sync --> Manage[manage]
+    Manage --> PodCheck[podsShouldBeOnNode]
+    PodCheck -->|shouldContinueRunning && Pod なし| Create[Pod 作成\nNodeAffinity を注入]
+    PodCheck -->|shouldContinueRunning && Pod あり| Keep[スキップ]
+    PodCheck -->|!shouldContinueRunning && Pod あり| Delete[Pod 削除]
+    Create --> Sched[kube-scheduler\nNodeAffinity で対象 Node に配置]
+```
+
+---
+
+## 12. 設計の Why（なぜそう作られているのか）
+
+**Q: なぜ以前の NodeName 直接指定から NodeAffinity 経由に変えたのか？**
+
+旧実装（NodeName 直接指定）はスケジューラをバイパスするため、
+CPU/メモリ不足チェックが機能せず、Node がリソース枯渇するリスクがあった。
+NodeAffinity 方式ではスケジューラのリソースチェック・Taint/Toleration 評価・
+プラグイン拡張が全て機能し、安全な配置が保証される。
+
+**Q: なぜ `BurstReplicas=250` という上限があるのか？**
+
+クラスタ初期起動や大規模ノード追加で一度に数千 Pod を作成しようとすると、
+API サーバーへのリクエストが集中しスローダウンが発生するため。
+250 という上限を設けることで複数の sync サイクルに分散させ、API サーバーへの影響を抑える。
+
+---
+
+## 13. 障害・運用観点
+
+### よくある障害パターン
+
+| 症状 | 根本原因 | 調査コマンド |
+|---|---|---|
+| 特定 Node で Pod が起動しない | Node の Taint と Pod の Toleration が一致しない | `kubectl describe node <node>` で Taint 確認、DaemonSet の tolerations 確認 |
+| RollingUpdate が止まる | 古い Pod が Terminating のまま停止している | `kubectl get pods -o wide` で Terminating 確認、`kubectl describe pod <pod>` |
+| 新規 Node に Pod が自動作成されない | NodeSelector/NodeAffinity の条件を満たさない | `kubectl describe node <node>` のラベル確認、DaemonSet の nodeSelector 確認 |
+| 想定外の Node に Pod が起動している | `NumberMisscheduled` > 0（Taint が後から追加された等） | `kubectl get ds` で `MISSCHEDULED` 列確認 |
+
+### よく使う調査コマンド
+
+```bash
+# DaemonSet の状態確認
+kubectl describe daemonset <name>
+
+# 全 Node での Pod 配置状況確認
+kubectl get pods -o wide -l <daemonset-selector>
+
+# 特定 Node の Taint 確認
+kubectl describe node <node-name> | grep Taint
+
+# DaemonSet のロールアウト状態
+kubectl rollout status daemonset/<name>
+
+# Node に DaemonSet Pod がない原因調査
+kubectl describe node <node-name>
+```
+
+### 主要 Prometheus メトリクス
+
+| メトリクス名 | 意味 | アラート基準例 |
+|---|---|---|
+| `kube_daemonset_status_number_unavailable` | 利用不可な Pod がある Node 数 | > 0 が長時間続くでアラート |
+| `kube_daemonset_status_desired_number_scheduled` | Pod を配置すべき Node 数 | 急変でアラート |
+| `kube_daemonset_status_number_misscheduled` | 不要な Node で Pod が動いている数 | > 0 でアラート |
+| `kube_daemonset_updated_number_scheduled` | 最新バージョンで動いている Node 数 | `desired_number_scheduled` との差が長時間続くなら更新が止まっている |
+
+---
+
 ## 参照ソース
 
 | ファイル | 内容 |
