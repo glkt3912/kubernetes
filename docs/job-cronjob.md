@@ -372,6 +372,98 @@ type CronJobStatus struct {
 
 ---
 
+## 16. CronJob → Job → Pod のライフサイクル（Mermaid）
+
+```mermaid
+sequenceDiagram
+    participant CJ as CronJob Controller
+    participant API as kube-apiserver
+    participant JC as Job Controller
+    participant Pod
+
+    Note over CJ: スケジュール時刻に到達
+    CJ ->> API: Create Job
+    API -->> CJ: OK（Job 作成）
+    JC ->> API: Watch Job → Create Pod
+    API -->> JC: OK（Pod 作成）
+    Pod ->> API: Exit 0（Succeeded）
+    JC ->> API: Update Job.status（succeeded+1）
+    JC ->> API: Update Job status（Complete）
+    CJ ->> API: Update CronJob.status.lastScheduleTime
+```
+
+---
+
+## 17. 設計の Why（なぜそう作られているのか）
+
+**Q: なぜ指数バックオフを使うのか？**
+
+同じバグで Pod が繰り返し失敗する場合、即時再起動するとクラスタのリソースを無駄に消費し続け、
+他のワークロードに影響するため。
+指数バックオフ（10s → 20s → 40s → … → 10min）により、
+根本的な問題がある場合でも影響を最小化しながら回復の機会を残せる。
+
+**Q: なぜ `uncountedTerminatedPods` があるのか？**
+
+Pod 完了カウント中に Controller が再起動すると二重カウントが発生するため。
+`uncountedTerminatedPods` は「まだ succeeded/failed カウントに反映されていない Pod の UID リスト」を
+etcd に記録し、Controller 再起動後も処理を再開できるようにする。これにより冪等性を保証する。
+
+**Q: なぜ `ConcurrencyPolicy` が必要か？**
+
+デフォルトの Allow では長時間バッチが積み重なりリソース枯渇が起きるため、
+ユースケースに応じた制御が必要だから。
+
+- **Forbid**: 前のジョブが終わるまで待つ（重複実行を防ぐ）
+- **Replace**: 常に最新だけ実行する（古いジョブをキャンセル）
+
+バッチの性質に合った動作を選択できる。
+
+---
+
+## 18. 障害・運用観点
+
+### よくある障害パターン
+
+| 症状 | 根本原因 | 調査コマンド |
+|---|---|---|
+| `BackoffLimitExceeded` | Pod が `backoffLimit`（デフォルト 6）回失敗 | `kubectl logs job/<name> --previous` でコンテナ終了理由確認 |
+| CronJob が Job を作らない | `startingDeadlineSeconds` 超過・`suspend: true` | `kubectl describe cronjob <name>` の Events + `suspend` フィールド確認 |
+| Job の Pod が作られない | `activeDeadlineSeconds` 超過で Job が終了済み | `kubectl describe job <name>` で `DeadlineExceeded` 確認 |
+| 古い Job が溜まって Pod が起動できない | `successfulJobsHistoryLimit`/`failedJobsHistoryLimit` が大きい | `kubectl get jobs` で蓄積確認、limit 値を下げる |
+| CronJob のスケジュールがずれる | コントローラが長時間停止していた（`startingDeadlineSeconds` 超過） | `kubectl describe cronjob <name>` の `lastScheduleTime` 確認 |
+
+### よく使う調査コマンド
+
+```bash
+# Job の状態確認
+kubectl describe job <job-name>
+
+# Job Pod のログ確認
+kubectl logs job/<job-name>
+kubectl logs job/<job-name> --previous
+
+# CronJob の状態確認
+kubectl describe cronjob <name>
+
+# 実行中の Job 一覧
+kubectl get jobs --field-selector=status.active=1
+
+# 失敗した Job の Pod 確認
+kubectl get pods --field-selector=status.phase=Failed -l job-name=<name>
+```
+
+### 主要 Prometheus メトリクス
+
+| メトリクス名 | 意味 | アラート基準例 |
+|---|---|---|
+| `kube_job_status_failed` | 失敗した Pod 数（Job ごと） | > 0 でアラート |
+| `kube_job_completion_time` | Job の完了時刻（完了した Job のみ） | 想定時間を超えた場合にアラート |
+| `kube_cronjob_next_schedule_time` | 次のスケジュール実行予定時刻 | 現在時刻より大幅に過去のままならコントローラが機能していない |
+| `kube_job_status_active` | 現在実行中の Pod 数 | 長時間 > parallelism の場合は Pod が終了していない可能性 |
+
+---
+
 ## 参照ソース
 
 | ファイル | 内容 |
