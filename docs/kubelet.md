@@ -511,7 +511,96 @@ Eviction          → Kubernetes が自動で行う強制削除
 
 ---
 
-## 10. 次に読むべきファイル
+## 10. Pod 起動シーケンス（Mermaid）
+
+```mermaid
+sequenceDiagram
+    participant API as kube-apiserver
+    participant KL as kubelet
+    participant PW as podWorkers
+    participant CRI as containerd (CRI)
+
+    API ->> KL: Watch（spec.nodeName 書き込み）
+    KL ->> KL: syncLoop() でイベント受信
+    KL ->> PW: UpdatePod（goroutine 起動）
+    PW ->> PW: SyncPod()
+    PW ->> CRI: CreatePodSandbox（pause コンテナ）
+    CRI -->> PW: Sandbox ID
+    PW ->> CRI: CreateContainer / StartContainer
+    CRI -->> PW: OK
+    PW ->> API: UpdatePodStatus（Running）
+```
+
+---
+
+## 11. 設計の Why（なぜそう作られているのか）
+
+**Q: なぜ CRI（抽象層）を挟むのか？**
+
+コンテナランタイムの差し替え可能性を保つため。
+Docker 削除 → containerd 移行が kubelet のコード変更なしで実現できた実績がその証拠。
+CRI という gRPC インターフェースを挟むことで、kubelet はランタイムの実装詳細を知らなくてよい。
+
+**Q: なぜ Pod ごとに worker goroutine を持つのか？**
+
+1 Pod の処理遅延が他の Pod を止めない隔離性を確保するため。
+単一 goroutine で全 Pod を処理すると、重い Pod が完了するまで他の Pod の起動・停止が待たされる。
+Pod ごとに独立した goroutine を立てることで並列処理を実現し、障害の影響範囲を Pod 単位に閉じ込められる。
+
+**Q: なぜ PLEG（Pod Lifecycle Event Generator）を使うのか？**
+
+コンテナランタイムへのポーリングを 1 goroutine に集約し、CPU 使用量を最小化するため。
+Watch だけではランタイム側のコンテナクラッシュを検知できない。
+PLEG は全コンテナを一括監視し、変化があったときだけ syncLoop に通知する設計により、
+コンテナ数が増えても監視の CPU コストを O(1) に保つ。
+
+---
+
+## 12. 障害・運用観点
+
+### よくある障害パターン
+
+| 症状 | 根本原因 | 調査コマンド |
+|---|---|---|
+| `CrashLoopBackOff` | コンテナが繰り返しクラッシュ（バグ・設定ミス・OOM） | `kubectl logs <pod> --previous` で exit code 確認 |
+| `ImagePullBackOff` | レジストリ認証失敗・ネットワーク疎通不可・イメージ名誤り | `kubectl describe pod <pod>` の Events 確認 |
+| `OOMKilled` | コンテナのメモリ使用量が limits を超過 | `kubectl top pod <pod>` + `container_memory_working_set_bytes` 確認 |
+| `Init:CrashLoopBackOff` | initContainer が繰り返し失敗 | `kubectl logs <pod> -c <init-container>` |
+| `ContainerCreating` が長時間 | PVC マウント待ち・イメージ pull 遅延・CRI エラー | `kubectl describe pod <pod>` の Events 確認 |
+| Node が NotReady | kubelet プロセス停止・ネットワーク断・リソース枯渇 | `journalctl -u kubelet -n 100` で kubelet ログ確認 |
+
+### よく使う調査コマンド
+
+```bash
+# Pod の詳細イベント確認
+kubectl describe pod <pod-name> -n <namespace>
+
+# 直前のクラッシュログ確認
+kubectl logs <pod-name> --previous -n <namespace>
+
+# Node 上の kubelet ログ確認（systemd 環境）
+journalctl -u kubelet -f
+
+# Node の状態確認
+kubectl describe node <node-name>
+
+# Pod のリソース使用量確認
+kubectl top pod <pod-name> -n <namespace>
+```
+
+### 主要 Prometheus メトリクス
+
+| メトリクス名 | 意味 | アラート基準例 |
+|---|---|---|
+| `kubelet_running_pods` | kubelet が管理している実行中 Pod 数 | 急激な減少でアラート |
+| `kubelet_pod_start_duration_seconds_bucket` | Pod 起動レイテンシ（CRI 呼び出しから Running まで） | p99 > 60s でアラート |
+| `container_oom_events_total` | OOM Kill が発生したコンテナ数の累計 | 増加トレンドでアラート |
+| `container_memory_working_set_bytes` | コンテナのメモリ実使用量（limits との比較用） | limits の 80% 超でアラート |
+| `kubelet_pleg_relist_duration_seconds_bucket` | PLEG がコンテナランタイムに問い合わせる時間 | p99 > 10s でアラート（PLEG unhealthy の予兆） |
+
+---
+
+## 13. 次に読むべきファイル
 
 ### kubelet のメインループ
 
