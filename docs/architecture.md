@@ -178,7 +178,21 @@ Kubernetes の全コントローラに共通する設計パターン。
 
 ## 5. コードリーディングの起点
 
-### Informer を理解する
+### 優先度について
+
+| 記号 | 意味 |
+|---|---|
+| ★★★ 必須 | これを読まないと他のコードが読めない |
+| ★★ 重要  | 日常運用・トラブルシュートに直結 |
+| ★ 応用   | 特定ユースケースで参照 |
+
+| 優先度 | ドキュメント |
+|---|---|
+| ★★★ | 用語集 / Informer / コントローラパターン / Go パターン / APIServer |
+| ★★  | kubelet / Deployment・ReplicaSet / Scheduler / etcd / Network / Taint・Toleration |
+| ★   | StatefulSet / DaemonSet / Node Lifecycle / Leader Election / Admission Control / ConfigMap・Secret / Storage / HPA / RBAC / GC / Job・CronJob / API バージョニング / CRD |
+
+### ★★★ Informer を理解する
 
 詳細は **[docs/informer-deep-dive.md](informer-deep-dive.md)** を参照。
 
@@ -197,7 +211,7 @@ staging/src/k8s.io/client-go/tools/cache/reflector.go
 
 **読む順序**: `reflector.go` → `delta_fifo.go` → `store.go` → `shared_informer.go`
 
-### Go パターンを理解する
+### ★★★ Go パターンを理解する
 
 詳細は **[docs/go-patterns.md](go-patterns.md)** を参照。
 
@@ -212,7 +226,7 @@ Mutex       → 共有データの保護
 defer       → 確実な後処理（Mutex 解放・シャットダウン）
 ```
 
-### APIServer を理解する
+### ★★★ APIServer を理解する
 
 詳細は **[docs/apiserver.md](apiserver.md)** を参照。
 
@@ -232,7 +246,7 @@ staging/src/k8s.io/apiserver/pkg/storage/etcd3/store.go
   └── etcd への読み書き実装
 ```
 
-### Scheduler を理解する
+### ★★ Scheduler を理解する
 
 詳細は **[docs/scheduler.md](scheduler.md)** を参照。
 
@@ -248,7 +262,7 @@ pkg/scheduler/scheduler.go
           └── bind()
 ```
 
-### kubelet を理解する
+### ★★ kubelet を理解する
 
 詳細は **[docs/kubelet.md](kubelet.md)** を参照。
 
@@ -269,7 +283,7 @@ pkg/kubelet/prober/
   └── liveness/readiness/startup probe の実装
 ```
 
-### Deployment コントローラを理解する（コントローラの典型例）
+### ★★★ Deployment コントローラを理解する（コントローラの典型例）
 
 詳細は **[docs/controller-pattern.md](controller-pattern.md)** を参照。
 
@@ -285,7 +299,7 @@ pkg/controller/deployment/sync.go
 
 ---
 
-### 用語を調べる
+### ★★★ 用語を調べる
 
 詳細は **[docs/glossary.md](glossary.md)** を参照。
 
@@ -297,7 +311,7 @@ Lister / HasSynced / Service / PV / PVC
 略称一覧（k8s / CRI / CNI / RBAC / CRD / PLEG 等）
 ```
 
-### API バージョニングを理解する
+### ★ API バージョニングを理解する
 
 詳細は **[docs/api-versioning.md](api-versioning.md)** を参照。
 
@@ -313,7 +327,7 @@ pkg/apis/core/v1/conversion.go        ← 手動変換関数
 pkg/apis/core/v1/zz_generated.conversion.go ← 自動生成変換関数
 ```
 
-### Taint / Toleration を理解する
+### ★★ Taint / Toleration を理解する
 
 詳細は **[docs/taint-toleration.md](taint-toleration.md)** を参照。
 
@@ -326,7 +340,7 @@ pkg/scheduler/framework/plugins/tainttoleration/taint_toleration.go
   └── Filter（配置拒否）・Score（ソフト制約）の実装
 ```
 
-### CRD と拡張を理解する
+### ★ CRD と拡張を理解する
 
 詳細は **[docs/crd.md](crd.md)** を参照。
 
@@ -340,7 +354,7 @@ staging/src/k8s.io/apiextensions-apiserver/pkg/apiserver/
   └── customresource_discovery_controller.go
 ```
 
-### RBAC を理解する
+### ★ RBAC を理解する
 
 詳細は **[docs/rbac-patterns.md](rbac-patterns.md)** を参照。
 
@@ -355,7 +369,7 @@ plugin/pkg/auth/authorizer/rbac/rbac.go
 
 ---
 
-### ストレージを理解する
+### ★ ストレージを理解する
 
 詳細は **[docs/storage.md](storage.md)** を参照。
 
@@ -368,7 +382,7 @@ pkg/controller/volume/persistentvolume/pv_controller.go
   └── PV と PVC のバインディングロジック
 ```
 
-### ネットワークを理解する
+### ★★ ネットワークを理解する
 
 詳細は **[docs/network.md](network.md)** を参照。
 
@@ -384,7 +398,7 @@ pkg/proxy/iptables/proxier.go
   └── KUBE-SERVICES チェーン生成（iptables モード）
 ```
 
-### オートスケールを理解する
+### ★ オートスケールを理解する
 
 詳細は **[docs/hpa.md](hpa.md)** を参照。
 
@@ -401,7 +415,7 @@ pkg/controller/podautoscaler/replica_calculator.go
   └── GetResourceReplicas() - レプリカ数の計算式
 ```
 
-### Deployment / ReplicaSet を理解する
+### ★★ Deployment / ReplicaSet を理解する
 
 詳細は **[docs/deployment-replicaset.md](deployment-replicaset.md)** を参照。
 
@@ -416,7 +430,7 @@ pkg/controller/replicaset/replica_set.go
   └── ReplicaSetController: Pod を作成・削除して replicas を維持
 ```
 
-### ConfigMap / Secret を理解する
+### ★ ConfigMap / Secret を理解する
 
 詳細は **[docs/configmap-secret.md](configmap-secret.md)** を参照。
 
@@ -432,7 +446,7 @@ pkg/kubelet/configmap/ / pkg/kubelet/secret/
   └── kubelet による Volume マウント処理
 ```
 
-### GC と OwnerReference を理解する
+### ★ GC と OwnerReference を理解する
 
 詳細は **[docs/garbage-collection.md](garbage-collection.md)** を参照。
 
@@ -448,7 +462,7 @@ pkg/controller/garbagecollector/graph.go
   └── 依存グラフのノード定義
 ```
 
-### StatefulSet を理解する
+### ★ StatefulSet を理解する
 
 詳細は **[docs/statefulset.md](statefulset.md)** を参照。
 
@@ -462,7 +476,7 @@ pkg/controller/statefulset/stateful_set_control.go
   └── updateStatefulSet() → processReplica() / processCondemned()
 ```
 
-### DaemonSet を理解する
+### ★ DaemonSet を理解する
 
 詳細は **[docs/daemonset.md](daemonset.md)** を参照。
 
@@ -477,7 +491,7 @@ pkg/controller/daemon/update.go
   └── rollingUpdate()（maxUnavailable による更新制御）
 ```
 
-### Job / CronJob を理解する
+### ★ Job / CronJob を理解する
 
 詳細は **[docs/job-cronjob.md](job-cronjob.md)** を参照。
 
@@ -497,6 +511,22 @@ pkg/controller/job/backoff_utils.go
 pkg/controller/cronjob/cronjob_controllerv2.go
   └── CronJob Controller / syncCronJob()
 ```
+
+### ★★ etcd を理解する
+
+詳細は **[docs/etcd.md](etcd.md)** を参照。
+
+### ★ Leader Election を理解する
+
+詳細は **[docs/leader-election.md](leader-election.md)** を参照。
+
+### ★ Admission Control を理解する
+
+詳細は **[docs/admission-control.md](admission-control.md)** を参照。
+
+### ★ Node Lifecycle を理解する
+
+詳細は **[docs/node-lifecycle.md](node-lifecycle.md)** を参照。
 
 ---
 
