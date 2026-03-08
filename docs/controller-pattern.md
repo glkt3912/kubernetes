@@ -491,7 +491,80 @@ func (c *MyController) sync(ctx context.Context, key string) error {
 
 ---
 
-## 7. 次に読むべきファイル
+## 7. Informer → WorkQueue → reconcile フロー（Mermaid）
+
+```mermaid
+flowchart TD
+    Informer -->|OnAdd/OnUpdate/OnDelete| EH[EventHandler]
+    EH -->|enqueue key| WQ[WorkQueue\nrate-limited + dedup]
+    WQ -->|Get| Worker[worker goroutine × N]
+    Worker -->|Lister\nキャッシュ読み取り| Reconcile[reconcile\nあるべき状態 vs 現在状態]
+    Reconcile -->|成功| Forget[queue.Forget\nリトライカウントリセット]
+    Reconcile -->|失敗| Retry[queue.AddRateLimited\n指数バックオフ]
+    Retry --> WQ
+```
+
+---
+
+## 8. 設計の Why（なぜそう作られているのか）
+
+**Q: なぜ WorkQueue にオブジェクト本体でなくキー（string）だけ積むのか？**
+
+Worker 実行時に Lister から最新状態を取得するため。
+イベント発生からワーカーが処理するまでの間に複数回更新が起きても、
+ワーカーは常に最新状態に対して reconcile を行う。
+中間のイベントを圧縮でき、冪等性が自然に保たれる。
+
+**Q: なぜ Rate Limiting するのか？**
+
+reconcile が連続して失敗しても API サーバーへのリクエストが過剰にならないようにするため。
+指数バックオフ（5ms → 10ms → … → 82s）により、根本的な障害がある場合でも apiserver が DoS 状態にならない。
+
+**Q: なぜ重複排除（deduplication）するのか？**
+
+同じキーが 100 回 enqueue されても、1 回だけ reconcile すれば結果は同じ（冪等性の活用）。
+イベントストームが発生してもキューが線形増大しない。
+WorkQueue の `dirty` セットがこれを保証する。
+
+---
+
+## 9. 障害・運用観点
+
+### よくある障害パターン
+
+| 症状 | 根本原因 | 調査コマンド |
+|---|---|---|
+| コントローラが reconcile しない | WorkQueue が詰まっている（reconcile が遅い・API タイムアウト） | `workqueue_depth` メトリクスを確認、`kubectl logs -n kube-system <controller-pod>` |
+| リーダーエレクション失敗 | kube-controller-manager Pod が複数起動・ネットワーク分断 | `kubectl describe lease -n kube-system kube-controller-manager` |
+| Deployment のロールアウトが進まない | reconcile がエラーで maxRetries を超えた | `kubectl describe deployment <name>` の Events・`kubectl get events` 確認 |
+| 15 回リトライ後に処理が止まる | 根本的なバグ or 権限不足（RBAC）による永続的な失敗 | コントローラのログで `too many retries` 相当のエラー確認 |
+
+### よく使う調査コマンド
+
+```bash
+# kube-controller-manager のログ確認
+kubectl logs -n kube-system -l component=kube-controller-manager --tail=100
+
+# リーダーエレクションの状態確認
+kubectl get lease -n kube-system
+
+# Deployment の reconcile 状態確認
+kubectl describe deployment <name>
+kubectl rollout status deployment/<name>
+```
+
+### 主要 Prometheus メトリクス
+
+| メトリクス名 | 意味 | アラート基準例 |
+|---|---|---|
+| `workqueue_depth` | WorkQueue の現在の積み残し数 | 長時間 > 0 でアラート |
+| `workqueue_queue_duration_seconds_bucket` | アイテムがキューに入ってから処理開始までの時間 | p99 > 60s でアラート |
+| `workqueue_retries_total` | リトライ発生総数 | 急増でアラート |
+| `workqueue_work_duration_seconds_bucket` | reconcile 1 回あたりの処理時間 | p99 が長い場合は reconcile ロジックに問題 |
+
+---
+
+## 10. 次に読むべきファイル
 
 ### Deployment Controller 本体
 
