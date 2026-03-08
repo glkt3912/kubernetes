@@ -596,7 +596,91 @@ Pod の `spec.schedulerName` フィールドで「どの Scheduler に処理さ�
 
 ---
 
-## 11. 次に読むべきファイル
+## 11. スケジューリングサイクル + バインディングサイクル（Mermaid）
+
+```mermaid
+sequenceDiagram
+    participant Q as SchedulingQueue
+    participant SC as Scheduling Cycle
+    participant BC as Binding Cycle
+    participant API as kube-apiserver
+
+    Q ->> SC: Pop(Pod)（優先度順）
+    SC ->> SC: Filter plugins（goroutine 並列・feasibleNodes 選定）
+    SC ->> SC: Score plugins（goroutine 並列・スコア合算）
+    SC ->> SC: Reserve（選択 Node をキャッシュに仮予約）
+    SC -->> BC: SuggestedHost 決定
+    Note over BC: 非同期 goroutine として起動
+    BC ->> API: Patch Pod.spec.nodeName
+    API -->> BC: OK
+    BC ->> BC: PostBind（後処理）
+```
+
+---
+
+## 12. 設計の Why（なぜそう作られているのか）
+
+**Q: なぜ Filter → Score の 2 段階なのか？**
+
+配置不可ノードを Filter で先に除外し、Score 計算の対象を絞ることで計算量を削減するため。
+5000 ノード全てに Score 計算を行うとレイテンシが大きくなる。
+Filter で数百ノードに絞ってから Score することで、精度を保ちつつ計算コストを大幅に抑えられる。
+
+**Q: なぜ Scheduling Cycle と Binding Cycle を分けるのか？**
+
+API 書き込み（Bind）の待ち時間中も次の Pod のスケジューリングを並行実行できるようにするため。
+Scheduling Cycle は直列（1 Pod ずつ）で実行されるが、Bind は非同期 goroutine に分離される。
+そのため Bind 完了を待たずに次の Pod のスケジューリングが進み、スループットが向上する。
+
+**Q: なぜ `percentageOfNodesToScore` があるのか？**
+
+ノード数 5000 台超では全ノードを評価すると O(N) のコストになるため。
+ランダムサンプリングで一定数のノードを評価すれば十分な品質のスケジューリングが可能であり、
+計算コストを O(定数) に削減できる。デフォルトでは `50 - (ノード数/125)` 程度の割合が使われる。
+
+---
+
+## 13. 障害・運用観点
+
+### よくある障害パターン
+
+| 症状 | 根本原因 | 調査コマンド |
+|---|---|---|
+| Pod が Pending のまま | リソース不足・Affinity 矛盾・Taint 不一致 | `kubectl describe pod <name>`（Events の reason: Unschedulable 確認） |
+| CPU/メモリ不足で配置できない | Node のアロケーション可能量を超えている | `kubectl describe node <node>` の Allocated resources 確認 |
+| Taint/Toleration 不一致 | Pod に必要な Toleration が設定されていない | `kubectl get node <node> -o jsonpath='{.spec.taints}'` |
+| PodAffinity/Anti-affinity 矛盾 | 条件を満たす Node が存在しない | `kubectl describe pod <name>` の Events 詳細確認 |
+| Pending が長時間続く | Preemption が必要だが低優先度 Pod が PDB で保護 | `kubectl get pdb` + `kubectl describe pod <name>` |
+
+### よく使う調査コマンド
+
+```bash
+# Pod がなぜスケジュールされないか確認
+kubectl describe pod <pod-name> -n <namespace>
+
+# Node のリソース空き状況確認
+kubectl describe node <node-name>
+kubectl top node
+
+# Taint 確認
+kubectl get nodes -o custom-columns=NAME:.metadata.name,TAINTS:.spec.taints
+
+# scheduler のログ確認
+kubectl logs -n kube-system -l component=kube-scheduler --tail=100
+```
+
+### 主要 Prometheus メトリクス
+
+| メトリクス名 | 意味 | アラート基準例 |
+|---|---|---|
+| `scheduler_pending_pods` | スケジュール待ちの Pod 数（キュー別） | `unschedulable` > 0 が長時間続くでアラート |
+| `scheduler_scheduling_attempt_duration_seconds_bucket` | スケジューリング 1 回あたりの処理時間 | p99 > 1s でアラート |
+| `scheduler_preemption_attempts_total` | Preemption が試みられた回数の累計 | 急増はリソース逼迫のサイン |
+| `scheduler_schedule_attempts_total` | スケジューリング試行回数（result=scheduled/unschedulable/error） | `unschedulable` の増加でアラート |
+
+---
+
+## 14. 次に読むべきファイル
 
 ### Scheduler のメインループ
 
