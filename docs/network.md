@@ -409,30 +409,7 @@ curl http://my-service:8080
 curl http://my-service.other-namespace:8080
 ```
 
-### Namespace とは
-
-リソースを分離する「仕切り」。同じ名前の Pod でも Namespace が違えば別物。
-
-CoreDNS 自体も Pod として `kube-system` Namespace で動いている。
-
-```bash
-kubectl get pods -n kube-system
-# NAME                READY
-# coredns-xxx         1/1   ← CoreDNS
-# kube-proxy-xxx      1/1
-# kube-apiserver-xxx  1/1
-```
-
-**代表的な Namespace**:
-
-| Namespace | 用途 |
-|---|---|
-| `default` | 何も指定しないと使われる |
-| `kube-system` | Kubernetes のシステムコンポーネント（CoreDNS・kube-proxy など）|
-| `kube-public` | 全ユーザーが読める公開情報 |
-| `kube-node-lease` | Node の死活監視（NodeLease）|
-
-`kube-system` を分けるのは「ユーザーのアプリと混在させず、誤操作を防ぐため」。
+CoreDNS のアーキテクチャ・ndots:5 の挙動・Corefile 設定・dnsPolicy・NodeLocal DNSCache などの詳細は **[docs/coredns.md](coredns.md)** を参照。
 
 ---
 

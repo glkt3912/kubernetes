@@ -291,42 +291,13 @@ IP アドレスの「器」として存在している。
 
 kubelet は Pod の各コンテナに対してヘルスチェック（Probe）を定期的に実行する。
 
-```
-実装: pkg/kubelet/prober/
-  prober_manager.go  ← Probe の管理・goroutine の起動
-  worker.go          ← 各コンテナの Probe を実行する goroutine
-  prober.go          ← 実際の Probe 実行（HTTP/TCP/Exec）
-```
+- **3種類**: liveness（失敗→再起動）/ readiness（失敗→Endpoints除外）/ startup（成功まで他Probe保留）
+- **実行方法**: HTTP GET / TCP Socket / Exec / gRPC
+- コンテナごとに専用の worker goroutine が起動し、結果は `ResultManager` に格納される
 
-**3種類の Probe**:
+Probe のパラメータ・動作シーケンス・設定例の詳細は **[docs/pod-lifecycle.md §5](pod-lifecycle.md)** を参照。
 
-```
-liveness probe（生存確認）:
-  失敗するとコンテナを再起動する
-  → デッドロックや応答不能になったコンテナを自動回復
-
-readiness probe（準備確認）:
-  失敗すると Pod を Service のエンドポイントから外す
-  → 起動中・処理中で外部トラフィックを受け付けられない間だけ外す
-  → コンテナは再起動されない
-
-startup probe（起動確認）:
-  起動完了を確認するまで liveness/readiness probe の実行を保留する
-  → 起動に時間がかかるアプリで liveness が誤って失敗するのを防ぐ
-```
-
-**Probe の実行方法**:
-
-```
-HTTP GET   → 指定したエンドポイントに HTTP リクエストを送る（2xx/3xx = 成功）
-TCP Socket → 指定したポートへの TCP 接続を試みる（接続成功 = 成功）
-Exec       → コンテナ内でコマンドを実行する（exit code 0 = 成功）
-gRPC       → gRPC ヘルスチェックプロトコルを使う
-```
-
-**実装の仕組み**:
-コンテナごとに専用の worker goroutine が起動し、独立して Probe を実行する。
-結果は `ResultManager` に格納され、syncLoop が参照して Pod の再同期をトリガーする。
+実装コード: `pkg/kubelet/prober/`（prober_manager.go / worker.go / prober.go）
 
 ---
 
